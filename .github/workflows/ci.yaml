@@ -1,0 +1,112 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install flake8  # Quick linting check
+
+      - name: Lint with flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # This step ensures the spec.yaml is valid before DO tries to read it
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Validate App Spec
+        run: doctl apps spec validate spec.yaml
+
+  deploy:
+    needs: test-and-validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Trigger DigitalOcean Deployment
+        run: |
+          # Since you have 'deploy_on_push: true' in your spec, 
+          # DO usually handles this. This command ensures the spec 
+          # is updated if you changed it in this commit.
+          doctl apps update ${{ secrets.DIGITALOCEAN_APP_ID }} --spec spec.yaml --wait
+
+health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Fetch App URL
+        id: get_url
+        run: |
+          # Pull the Default Ingress URL and save it to the environment
+          RAW_URL=$(doctl apps get ${{ secrets.DIGITALOCEAN_APP_ID }} --format DefaultIngress --no-header)
+          echo "APP_URL=$RAW_URL" >> $GITHUB_ENV
+          echo "Detected App URL: $RAW_URL"
+
+      - name: Wait for Propagation
+        run: sleep 30 # Small delay to ensure the new version is routing traffic
+
+      - name: Probe Application Endpoint
+        run: |
+          # Use the variable we set in the previous step
+          TARGET_URL="${{ env.APP_URL }}/test?target=https://doompatrol.io"
+          
+          echo "Probing $TARGET_URL..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL")
+          
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Health check passed with status 200!"
+          else
+            echo "❌ Health check failed with status $STATUS"
+            # Optional: curl the body for more detail if it fails
+            curl -s "$TARGET_URL"
+            exit 1
+          fi
+
+      - name: Notify on Failure
+        if: failure()
+        run: echo "The deployment health check failed! Check the logs for $APP_URL"
+
+      - name: Rollback on Health Check Failure
+        if: failure()
+        run: |
+          echo "Health check failed! Initiating rollback..."
+          
+          # Get the ID of the PREVIOUS successful deployment
+          PREV_DEPLOY_ID=$(doctl apps list-deployments ${{ secrets.DIGITALOCEAN_APP_ID }} --format ID,Phase --no-header | grep "ACTIVE" | awk 'NR==2 {print $1}')
+          
+          if [ -z "$PREV_DEPLOY_ID" ]; then
+            echo "No previous active deployment found to rollback to."
+            exit 1
+          fi
+
+          echo "Rolling back to deployment: $PREV_DEPLOY_ID"
+          doctl apps rollback ${{ secrets.DIGITALOCEAN_APP_ID }} --deployment-id $PREV_DEPLOY_ID --wait
