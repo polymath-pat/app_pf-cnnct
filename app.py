@@ -6,9 +6,9 @@ import requests
 from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # 1. Configure Logging
-# Using StreamHandler(sys.stdout) ensures logs appear in Podman and DO App Platform
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] in %(module)s: %(message)s',
@@ -18,31 +18,32 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# FIX: Trust the DigitalOcean Load Balancer
+# x_for=2 is often needed for DO App Platform's multi-tier proxy setup
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
+
 # 2. Configure Rate Limiting (Valkey/Redis)
 redis_url = os.environ.get("REDIS_URL", "memory://")
-logger.info(f"Initializing rate limiter with storage: {redis_url.split('@')[-1]}") # Log URL safely
+logger.info(f"Initializing rate limiter with storage: {redis_url.split('@')[-1]}")
 
-try:
-    limiter = Limiter(
-        get_remote_address,
-        app=app,
-        storage_uri=redis_url,
-        default_limits=["200 per day", "50 per hour"],
-        storage_options={"socket_connect_timeout": 30},
-    )
-except Exception as e:
-    logger.error(f"Failed to connect to Redis/Valkey: {e}")
-    # Fallback is handled by Flask-Limiter internally if configured, 
-    # but we log it for visibility.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    storage_uri=redis_url,
+    # Standard limits for the whole app
+    default_limits=["100 per hour", "20 per minute"],
+    storage_options={"socket_connect_timeout": 30},
+    strategy="fixed-window",
+)
 
 # 3. Routes
 @app.route('/healthz')
+@limiter.exempt  # CRITICAL FIX: Prevents DigitalOcean probes from being rate-limited
 def health_check():
     """Health check endpoint for DigitalOcean and CI/CD probes."""
-    return jsonify({"status": "healthy", "storage": "connected" if redis_url else "memory"}), 200
+    return jsonify({"status": "healthy"}), 200
 
 @app.route('/cnnct', methods=['GET'])
-@limiter.limit("10 per minute")
 def cnnct():
     target = request.args.get('target')
     
@@ -50,7 +51,8 @@ def cnnct():
         logger.warning("Aborted: Request missing 'target' parameter")
         return jsonify({"error": "No target specified"}), 400
 
-    logger.info(f"Probing target: {target}")
+    # request.remote_addr will now show the actual User IP thanks to ProxyFix
+    logger.info(f"Probing target: {target} for User: {request.remote_addr}")
 
     results = {
         "target": target,
@@ -81,8 +83,7 @@ def cnnct():
 
 # 4. Entry Point
 if __name__ == "__main__":
-    # HOST comes from docker-compose or spec.yaml to satisfy Bandit B104
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8080))
     
     logger.info(f"Starting application on {host}:{port}")
