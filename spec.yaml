@@ -1,13 +1,41 @@
-name: ap-cnnct
+name: network-cnnct
 region: nyc
 services:
-- name: web-tester
-  instance_count: 1
-  instance_size_slug: basic-xxs
-  github:
-    repo: polymath-pat/app_pf-cnnct
-    branch: main
-    deploy_on_push: false
-  source_dir: /
-  run_command: gunicorn app:app
-  http_port: 8080
+  - name: backend-api
+    github:
+      repo: polymath-pat/doap-cnnct
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    # Health check ensures DO only routes traffic when Flask is ready
+    health_check:
+      http_path: /healthz
+      initial_delay_seconds: 10
+      period_seconds: 30
+    envs:
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: ${redis-ratelimit.REDIS_URL}
+    routes:
+      - path: /api
+
+static_sites:
+  - name: frontend-ui
+    github:
+      repo: polymath-pat/app_pf-cnnct
+      branch: main
+      deploy_on_push: true
+    source_dir: /frontend
+    build_command: npm run build
+    output_dir: dist
+    routes:
+      - path: /
+
+databases:
+  - name: redis-ratelimit
+    engine: REDIS
+    version: "7"
+    size: db-s-1vcpu-1gb
