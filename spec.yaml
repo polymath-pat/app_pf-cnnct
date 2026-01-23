@@ -7,6 +7,7 @@ services:
       branch: main
       deploy_on_push: true
     source_dir: /
+    dockerfile_path: backend.Dockerfile
     http_port: 8080
     instance_count: 1
     instance_size_slug: basic-xxs
@@ -36,7 +37,7 @@ static_sites:
 
 databases:
   - name: redis-ratelimit
-    engine: REDIS
+    engine: VALKEY
     version: "7"
     # Change the size to a dedicated production tier
     size: db-s-1vcpu-1gb 
