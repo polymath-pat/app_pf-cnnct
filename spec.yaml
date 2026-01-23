@@ -38,4 +38,7 @@ databases:
   - name: redis-ratelimit
     engine: REDIS
     version: "7"
-    size: db-s-1vcpu-1gb
+    # Change the size to a dedicated production tier
+    size: db-s-1vcpu-1gb 
+    # Ensure it is not set as a dev database
+    production: true
