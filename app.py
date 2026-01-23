@@ -3,39 +3,46 @@ import requests
 from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
-
-# we vibe coding now boi...
-app = Flask(__name__)
-
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-# Add this right after app = Flask(__name__)
+app = Flask(__name__)
+
+# Trust the headers from DO Load Balancer or local Nginx
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# Initialize Limiter
-# storage_uri="memory://" is fine for single instances. 
-# Use Redis if you scale to multiple containers.
+# Connect to Redis (DO provided or Docker)
+redis_url = os.environ.get("REDIS_URL", "memory://")
+
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
+    storage_uri=redis_url,
+    storage_options={"socket_connect_timeout": 1}, 
+    strategy="fixed-window"
 )
 
-@app.route('/test')
-@limiter.limit("5 per minute") # Specific rate limit for this route
+# 1. NEW: Simple Health Check (used by DO and Makefile)
+@app.route('/healthz')
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
+# 2. UPDATED: Path matches the spec.yaml route
+# We use /api/cnnct so the Frontend fetch('/api/cnnct') hits exactly right.
+@app.route('/api/cnnct')
+@limiter.limit("5 per minute")
 def network_check():
     target = request.args.get('target')
 
     if not target:
-        return jsonify({"error": "Target missing. Usage: /test?target=1.1.1.1"}), 400
+        return jsonify({"error": "Target missing. Usage: /api/cnnct?target=1.1.1.1"}), 400
 
     if not target.startswith(('http://', 'https://')):
         target = f'http://{target}'
 
     try:
-        response = requests.get(target, timeout=5)
+        # User-Agent header added to prevent some sites from blocking the request
+        headers = {'User-Agent': 'DO-Network-Tester/1.0'}
+        response = requests.get(target, timeout=5, headers=headers)
         return jsonify({
             "status": "Connected",
             "destination": target,
@@ -45,12 +52,11 @@ def network_check():
     except Exception as e:
         return jsonify({"status": "Failed", "error": str(e)}), 500
 
-# Custom error handler for when users hit the limit
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({
         "error": "Rate limit exceeded",
-        "message": "You are doing that too much. Please try again later.",
+        "message": "Too many requests. Redis is watching!",
         "limit": str(e.description)
     }), 429
 
