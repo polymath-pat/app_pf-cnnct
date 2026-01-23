@@ -25,7 +25,7 @@ services:
 static_sites:
   - name: frontend-ui
     github:
-      repo: polymath-pat/app_pf-cnnct
+      repo: polymath-pat/doap-cnnct
       branch: main
       deploy_on_push: true
     source_dir: /frontend
