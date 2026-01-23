@@ -2,3 +2,4 @@ flask
 requests
 gunicorn
 flask-limiter
+redis>=3.0  # Explicitly require version 3.0+ for compatibility
