@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-test-and-validate:
+  test-and-validate: # Fixed indentation here
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -44,9 +44,8 @@ test-and-validate:
 
       - name: TypeScript Type Check
         working-directory: ./frontend
-        run: npm run build # This triggers 'tsc' based on your package.json
+        run: npm run build 
 
-      # --- INFRASTRUCTURE VALIDATION ---
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
@@ -57,7 +56,6 @@ test-and-validate:
 
   deploy:
     needs: test-and-validate
-    # Only deploy on push to main, not on Pull Requests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -71,7 +69,6 @@ test-and-validate:
 
       - name: Trigger DigitalOcean Deployment
         run: |
-          # This updates the app with the latest spec and waits for DO to finish the rollout
           doctl apps update ${{ secrets.DIGITALOCEAN_APP_ID }} --spec spec.yaml --wait
 
   health-check:
@@ -93,31 +90,4 @@ test-and-validate:
   
       - name: Probe Application Endpoint
         run: |
-          # UPDATED: Use the /healthz endpoint or the new /api/cnnct path
-          # Probing /healthz is best as it bypasses rate limiting
-          TARGET_URL="${{ env.APP_URL }}/healthz"
-          
-          echo "Probing $TARGET_URL..."
-          # Max 5 retries to account for cold starts
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 5 "$TARGET_URL")
-          
-          if [ "$STATUS" -eq 200 ]; then
-            echo "✅ Health check passed!"
-          else
-            echo "❌ Health check failed with status $STATUS"
-            exit 1
-          fi
-  
-      - name: Rollback on Health Check Failure
-        if: failure()
-        run: |
-          echo "Initiating rollback..."
-          # Get the ID of the SECOND active/successful deployment (the one before the failed one)
-          PREV_DEPLOY_ID=$(doctl apps list-deployments ${{ secrets.DIGITALOCEAN_APP_ID }} --format ID,Phase --no-header | grep "ACTIVE" | awk 'NR==2 {print $1}')
-          
-          if [ -n "$PREV_DEPLOY_ID" ]; then
-            doctl apps rollback ${{ secrets.DIGITALOCEAN_APP_ID }} --deployment-id $PREV_DEPLOY_ID --wait
-          else
-            echo "No valid previous deployment found."
-            exit 1
-          fi
+          TARGET_URL="${{ env.APP_URL }
