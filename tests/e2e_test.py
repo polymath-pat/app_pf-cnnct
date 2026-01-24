@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 def run_e2e_test():
+    # 1. Setup Headless Chrome
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -21,50 +22,53 @@ def run_e2e_test():
     driver = None
 
     try:
-        # 1. Install and locate driver
+        # 2. Patch for macOS ARM64 / Linux Driver path issue
         driver_path = ChromeDriverManager().install()
         if "THIRD_PARTY_NOTICES" in driver_path:
             driver_path = os.path.join(os.path.dirname(driver_path), "chromedriver")
         
-        # 2. FORCE PERMISSIONS (Fixes 'wrong permissions' error)
+        # Ensure the binary is executable (Crucial for macOS and CI)
         st = os.stat(driver_path)
         os.chmod(driver_path, st.st_mode | stat.S_IEXEC)
-        print(f"✅ Driver ready and executable: {driver_path}")
+        print(f"✅ Driver ready: {driver_path}")
         
         service = ChromeService(executable_path=driver_path)
         driver = webdriver.Chrome(service=service, options=chrome_options)
 
-        # 3. App Interaction logic
-        wait = WebDriverWait(driver, 15)
-        driver.get("http://localhost:80")
+        # 3. Load App - Using port 8081 for rootless Podman compatibility
+        wait = WebDriverWait(driver, 20) # Increased timeout for CI stability
+        target_url = "http://localhost:8081"
+        print(f"🚀 Loading app at {target_url}...")
+        driver.get(target_url)
 
-        # Verify Modern UI
+        # 4. Verify UI Identity (Modern Glassmorphic Header)
         logo = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
         if "CNNCT" not in logo.text:
-            print(f"❌ Stale UI error. Found: {logo.text}")
+            print(f"❌ UI Mismatch: Found '{logo.text}' but expected 'CNNCT'.")
             sys.exit(1)
 
+        # 5. Perform Interaction
         target_input = wait.until(EC.presence_of_element_located((By.ID, "target-input")))
-        print("⌨️  Submitting target 8.8.8.8...")
+        print("⌨️  Submitting probe for 8.8.8.8...")
         target_input.send_keys("8.8.8.8")
         target_input.send_keys(Keys.ENTER)
 
-        # 4. Results Check
-        print("⏳ Waiting for backend...")
+        # 6. Verify Results Rendered (Looking for the 'Service Port' label in JS output)
+        print("⏳ Waiting for API response results...")
         wait.until(EC.text_to_be_present_in_element((By.ID, "results-area"), "Service Port"))
         
         results = driver.find_element(By.ID, "results-area").text
-        if "ONLINE" in results or "OFFLINE" in results:
-            print("✨ E2E SUCCESS: Results rendered correctly.")
+        if any(status in results for status in ["ONLINE", "OFFLINE"]):
+            print("✨ E2E SUCCESS: Results are visible in the modern UI.")
         else:
-            print("❌ Results container found but data missing.")
+            print("❌ Results area found but status text is missing.")
             sys.exit(1)
 
     except Exception as e:
         print(f"🔥 Test Error: {str(e)}")
         if driver:
             driver.save_screenshot("e2e_error.png")
-            print("📸 Error screenshot saved.")
+            print("📸 Error screenshot saved to e2e_error.png")
         sys.exit(1)
         
     finally:

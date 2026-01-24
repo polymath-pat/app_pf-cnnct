@@ -8,7 +8,7 @@ services:
       dockerfile: frontend.Dockerfile  # Fixed typo here
     container_name: cnnct-frontend
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - backend-api
     networks:
