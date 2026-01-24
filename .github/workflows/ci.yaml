@@ -2,9 +2,22 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, frontend-update]
+    branches: 
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'bug/**'
   pull_request:
-    branches: [main, frontend-update]
+    branches: 
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'bug/**'
+
+# Permissions required for DigitalOcean to post Preview URLs to Pull Requests
+permissions:
+  pull-requests: write
+  contents: read
 
 jobs:
   quality-gate:
@@ -53,7 +66,7 @@ jobs:
   deploy:
     name: Deploy to DigitalOcean
     needs: quality-gate
-    # UPDATE: Condition expanded to include pull_request events for Preview deployments
+    # Condition allows main deployments and Pull Request Preview deployments
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
