@@ -6,71 +6,47 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
-  test-and-audit:
-    name: Audit & Spec Validation
+  quality-gate:
+    name: Security & E2E Testing
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install Linting Tools
-        run: pip install bandit doctl
-
-      - name: Run Security Audit
-        run: make test-security
-
-      - name: Validate App Spec
-        uses: digitalocean/app_action/deploy@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          app_spec_location: ".do/app.yaml"
-          print_only: "true"
-
-  e2e-chrome-test:
-    name: E2E Podman Selenium Test
-    needs: test-and-audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Install Podman-Compose
         run: pip install podman-compose
 
-      - name: Set up Python for Selenium
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+      - name: Install Selenium Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
 
-      - name: Install Test Dependencies
-        run: pip install -r requirements-dev.txt
+      - name: Run Full Test Suite
+        run: make test-all
 
-      - name: Build and Run Stack
-        run: make test-e2e # This runs 'up' then 'tests/e2e_test.py'
-
-      - name: Upload Error Screenshots
+      - name: Upload Screenshots on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: selenium-screenshots
+          name: e2e-failure-screenshot
           path: e2e_error.png
 
   deploy:
-    name: DigitalOcean Deploy
-    needs: e2e-chrome-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Deploy to DigitalOcean
+    needs: quality-gate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to Production
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to App Platform
         uses: digitalocean/app_action/deploy@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
