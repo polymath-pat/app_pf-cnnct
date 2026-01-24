@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
+    branches: 
       - main
       - 'feature/**'
       - 'fix/**'
@@ -11,7 +11,7 @@ on:
 
 jobs:
   quality-gate:
-    name: Security & E2E Testing
+    name: Quality Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -35,16 +35,24 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Podman-Compose
-        run: pip install podman-compose
-
-      - name: Install Selenium Dependencies
+      - name: Prepare Virtual Environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
+          pip install podman-compose
+          make virt-env
 
-      - name: Run Full Test Suite
-        run: make test-all
+      - name: Run Security Audit
+        run: make test-security
+
+      - name: Spin Up Infrastructure
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-chrome-stable
+          make build
+          make up
+          echo "Waiting for services..."
+          sleep 12
+
+      - name: Execute E2E Tests
+        run: make run-e2e
 
       - name: Upload Screenshots on Failure
         if: failure()
@@ -56,7 +64,7 @@ jobs:
   deploy:
     name: Deploy to DigitalOcean
     needs: quality-gate
-    # UPDATE: Condition expanded to include pull_request events for Preview deployments
+    # Deploy on main or for any pull request (DigitalOcean PR Preview)
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
