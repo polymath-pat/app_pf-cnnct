@@ -12,50 +12,66 @@ permissions:
 
 jobs:
   test-and-audit:
-    name: Test, Audit & Validate
+    name: Audit & Spec Validation
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Python Security Audit (Bandit)
-        run: |
-          pip install bandit
-          bandit -r . -x ./venv
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Linting Tools
+        run: pip install bandit doctl
+
+      - name: Run Security Audit
+        run: make test-security
 
       - name: Validate App Spec
         uses: digitalocean/app_action/deploy@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          # Use 'print_only' to validate the spec without deploying 
-          # during the audit phase
-          print_only: "true" 
+          app_spec_location: ".do/app.yaml"
+          print_only: "true"
 
-  deploy:
-    name: Deploy
+  e2e-chrome-test:
+    name: E2E Podman Selenium Test
     needs: test-and-audit
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Deploy to DigitalOcean
-        id: deploy
+      - name: Install Podman-Compose
+        run: pip install podman-compose
+
+      - name: Set up Python for Selenium
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Test Dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Build and Run Stack
+        run: make test-e2e # This runs 'up' then 'tests/e2e_test.py'
+
+      - name: Upload Error Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-screenshots
+          path: e2e_error.png
+
+  deploy:
+    name: DigitalOcean Deploy
+    needs: e2e-chrome-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Production
         uses: digitalocean/app_action/deploy@v2
         with:
-          # This flag tells DO to create a NEW temporary app for PRs
-          # but update the EXISTING app for pushes to main
-          deploy_pr_preview: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Comment PR with Link
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `🚀 **PR Preview Deployed!**\nURL: ${{ fromJson(steps.deploy.outputs.app).live_url }}`
-            })
+          app_spec_location: ".do/app.yaml"

@@ -1,29 +1,50 @@
+version: '3.8'
+
 services:
-  # The Redis Database
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  # The Python API
-  backend:
+  # 1. Frontend: Serves the Modern UI and acts as the Reverse Proxy
+  frontend-ui:
     build:
-      context: .
-      dockerfile: backend.Dockerfile
-    ports:
-      - "8080:8080"  # ADD THIS LINE to map the port locally
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - HOST=0.0.0.0
-    depends_on:
-      - redis
-
-  # The TypeScript UI
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend.Dockerfile
+      context: ./frontend
+      dockerfile: frontend.Dockerfile  # Fixed typo here
+    container_name: cnnct-frontend
     ports:
       - "80:80"
     depends_on:
-      - backend
+      - backend-api
+    networks:
+      cnnct-network:
+        aliases:
+          - frontend
+
+  # 2. Backend: Flask API handling the network probes
+  backend-api:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: cnnct-backend
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - REDIS_URL=redis://redis-cache:6379/0
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis-cache
+    networks:
+      cnnct-network:
+        aliases:
+          - backend-api
+
+  # 3. Redis: Local equivalent of DigitalOcean's Valkey
+  redis-cache:
+    image: redis:7-alpine
+    container_name: cnnct-redis
+    networks:
+      cnnct-network:
+        aliases:
+          - redis-cache
+
+networks:
+  cnnct-network:
+    driver: bridge

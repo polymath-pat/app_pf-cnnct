@@ -2,48 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CNNCT // Network Prober</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; background: #0a0a0c; color: #e4e4e7; }
-        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .accent-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
-        .glow:focus { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
-    </style>
+    <title>Network Tester</title>
 </head>
-<body class="min-h-screen flex items-center justify-center p-6">
-    <div class="max-w-xl w-full">
-        <div class="text-center mb-10">
-            <h1 class="text-4xl font-extrabold tracking-tight mb-2 italic">CNNCT<span class="text-indigo-500">.</span></h1>
-            <p class="text-zinc-500 font-light tracking-wide uppercase text-xs">Metaciety Network Diagnostics</p>
-        </div>
-
-        <div class="glass p-8 rounded-3xl shadow-2xl">
-            <form id="probe-form" class="space-y-6">
-                <div>
-                    <label class="block text-sm font-semibold mb-2 text-zinc-400">Target Address</label>
-                    <input 
-                        type="text" 
-                        id="target-input" 
-                        placeholder="e.g. metaciety.net or 8.8.8.8" 
-                        class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl px-5 py-4 focus:outline-none focus:border-indigo-500 glow transition-all text-lg placeholder:text-zinc-700"
-                        required
-                    >
-                </div>
-                <button type="submit" id="submit-btn" class="w-full accent-gradient hover:opacity-90 py-4 rounded-2xl font-bold text-white transition-all transform hover:scale-[1.01] active:scale-[0.98] shadow-lg">
-                    Run Connectivity Test
-                </button>
-            </form>
-
-            <div id="results-area" class="mt-8 space-y-4">
-                </div>
-        </div>
-
-        <footer class="mt-8 text-center text-zinc-600 text-sm">
-            &copy; 2026 Metaciety System Diagnostics
-        </footer>
+<body>
+    <div id="app">
+        <h1>Network Connectivity Tester</h1>
+        <form id="probe-form">
+            <input 
+                type="text" 
+                id="target-input" 
+                placeholder="Enter IP or Domain (e.g. 8.8.8.8)" 
+                required
+            >
+            <button type="submit" id="submit-btn">Test Connection</button>
+        </form>
+        <div id="results-area"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
 </body>
