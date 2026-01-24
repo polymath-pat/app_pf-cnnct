@@ -208,3 +208,6 @@ __marimo__/
 
 # node
 node_modules/
+
+# selenium test images
+*.png

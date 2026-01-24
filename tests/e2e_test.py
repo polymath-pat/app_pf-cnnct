@@ -49,8 +49,8 @@ def run_e2e_test():
 
         # 5. Perform Interaction
         target_input = wait.until(EC.presence_of_element_located((By.ID, "target-input")))
-        print("⌨️  Submitting probe for 8.8.8.8...")
-        target_input.send_keys("8.8.8.8")
+        print("⌨️  Submitting probe for doompatrol.io...")
+        target_input.send_keys("doompatrol.io")
         target_input.send_keys(Keys.ENTER)
 
         # 6. Verify Results Rendered (Looking for the 'Service Port' label in JS output)
