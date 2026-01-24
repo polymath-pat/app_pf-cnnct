@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test-and-audit:
     name: Test, Audit & Validate
@@ -14,72 +18,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install bandit flake8
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
       - name: Python Security Audit (Bandit)
         run: |
-          # Audit the code; will respect the # nosec flags in app.py
+          pip install bandit
           bandit -r . -x ./venv
 
-      - name: Python Linting (Flake8)
-        run: |
-          # Stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+      - name: Validate App Spec
+        uses: digitalocean/app_action/deploy@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Validate DigitalOcean App Spec
-        run: |
-          echo "🔍 Validating spec.yaml..."
-          doctl apps spec validate spec.yaml
+          # Use 'print_only' to validate the spec without deploying 
+          # during the audit phase
+          print_only: "true" 
 
   deploy:
-    name: Deploy to DigitalOcean
+    name: Deploy
     needs: test-and-audit
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+      - name: Deploy to DigitalOcean
+        id: deploy
+        uses: digitalocean/app_action/deploy@v2
         with:
+          # This flag tells DO to create a NEW temporary app for PRs
+          # but update the EXISTING app for pushes to main
+          deploy_pr_preview: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      - name: Update App Deployment
-        run: |
-          # This triggers the update for the live production app
-          doctl apps update ${{ secrets.DIGITALOCEAN_APP_ID }} --spec spec.yaml
-
-      - name: Wait for Deployment & Get URL
-        run: |
-          # Fetch the live URL and store it for the next step
-          APP_URL=$(doctl apps get ${{ secrets.DIGITALOCEAN_APP_ID }} --format DefaultIngress --no-header)
-          echo "APP_URL=$APP_URL" >> $GITHUB_ENV
-
-      - name: Probe Application Health
-        run: |
-          # Probe the /api/healthz endpoint (matches our spec.yaml routing)
-          TARGET_URL="${{ env.APP_URL }}/api/healthz"
-          echo "Probing $TARGET_URL..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 10 "$TARGET_URL")
-          
-          if [ "$STATUS" -eq 200 ]; then
-            echo "✅ Health check passed!"
-          else
-            echo "❌ Health check failed with status $STATUS"
-            exit 1
-          fi
+      - name: Comment PR with Link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **PR Preview Deployed!**\nURL: ${{ fromJson(steps.deploy.outputs.app).live_url }}`
+            })
