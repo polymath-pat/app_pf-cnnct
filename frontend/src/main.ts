@@ -1,29 +1,45 @@
-import './main.css';
-const testBtn = document.getElementById('testBtn') as HTMLButtonElement;
-const targetInput = document.getElementById('target') as HTMLInputElement;
-const resultsDiv = document.getElementById('results') as HTMLDivElement;
-const outputPre = document.getElementById('output') as HTMLPreElement;
+// Select DOM elements
+const probeForm = document.getElementById('probe-form') as HTMLFormElement;
+const targetInput = document.getElementById('target-input') as HTMLInputElement;
+const resultsArea = document.getElementById('results-area') as HTMLDivElement;
 
-testBtn.addEventListener('click', async () => {
-    const target = targetInput.value;
-    if (!target) return alert('Enter a target!');
+// Handle the submission (Click OR Enter key)
+probeForm.addEventListener('submit', async (e: Event) => {
+    e.preventDefault(); // Stop page refresh
 
-    testBtn.disabled = true;
-    testBtn.innerText = 'Testing...';
-    resultsDiv.classList.add('hidden');
+    const target = targetInput.value.trim();
+    if (!target) return;
 
+    // UI Feedback
+    resultsArea.innerHTML = `<p>Probing <strong>${target}</strong>...</p>`;
+    
     try {
-        // We hit the backend at /api/test (per our spec routing)
-        const response = await fetch(`/api/cnnct?target=${target}`);
-        const data = await response.json();
+        const response = await fetch(`/api/cnnct?target=${encodeURIComponent(target)}`);
         
-        resultsDiv.classList.remove('hidden');
-        outputPre.innerText = JSON.stringify(data, null, 2);
+        if (!response.ok) {
+            if (response.status === 429) {
+                resultsArea.innerHTML = `<p style="color: red;">Rate limit exceeded. Try again later.</p>`;
+            } else {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            return;
+        }
+
+        const data = await response.json();
+        renderResults(data);
     } catch (err) {
-        outputPre.innerText = 'Error: Could not reach backend.';
-        resultsDiv.classList.remove('hidden');
-    } finally {
-        testBtn.disabled = false;
-        testBtn.innerText = 'Run Test';
+        resultsArea.innerHTML = `<p style="color: red;">Error connecting to backend: ${err}</p>`;
+        console.error("Fetch error:", err);
     }
 });
+
+function renderResults(data: any) {
+    resultsArea.innerHTML = `
+        <h3>Results for ${data.target}</h3>
+        <ul>
+            <li>TCP Port 80: ${data.tcp_80 ? '✅ Open' : '❌ Closed'}</li>
+            <li>TCP Port 443: ${data.tcp_443 ? '✅ Open' : '❌ Closed'}</li>
+            <li>HTTP Status: ${data.http_response || 'Unreachable'}</li>
+        </ul>
+    `;
+}
