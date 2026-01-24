@@ -83,4 +83,4 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
           app_spec_location: ".do/app.yaml"
-          deploy_pr_preview: true
+          deploy_pr_preview: ${{ github.event_name == 'pull_request' }}
