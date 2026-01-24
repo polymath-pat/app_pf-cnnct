@@ -1,0 +1,8 @@
+# Testing & Automation
+selenium==4.18.1
+pytest==8.0.0
+webdriver-manager>=4.0.2
+
+# Linting & Security
+bandit==1.7.7
+flake8==7.0.0

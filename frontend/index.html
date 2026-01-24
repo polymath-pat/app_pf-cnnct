@@ -2,22 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Network Tester</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNNCT | Modern Network Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div id="app">
-        <h1>Network Connectivity Tester</h1>
-        <form id="probe-form">
-            <input 
-                type="text" 
-                id="target-input" 
-                placeholder="Enter IP or Domain (e.g. 8.8.8.8)" 
-                required
-            >
-            <button type="submit" id="submit-btn">Test Connection</button>
-        </form>
-        <div id="results-area"></div>
+<body class="bg-slate-900 min-h-screen flex items-center justify-center p-4">
+    
+    <div class="fixed top-0 left-0 w-full h-full overflow-hidden -z-10">
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
     </div>
+
+    <div id="app" class="w-full max-w-md bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl p-8 transform transition-all hover:scale-[1.01]">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 tracking-tight mb-2">
+                CNNCT
+            </h1>
+            <p class="text-slate-400 text-sm font-medium">Modern Network Connectivity Probe</p>
+        </header>
+
+        <form id="probe-form" class="space-y-4">
+            <div class="relative">
+                <input 
+                    type="text" 
+                    id="target-input" 
+                    placeholder="Enter IP or Domain (e.g. 8.8.8.8)" 
+                    required
+                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                >
+            </div>
+            
+            <button 
+                type="submit" 
+                id="submit-btn" 
+                class="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-blue-900/20 transform transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+                Test Connection
+            </button>
+        </form>
+
+        <div 
+            id="results-area" 
+            class="mt-8 space-y-3 empty:hidden animate-in fade-in slide-in-from-top-4 duration-500"
+        >
+            </div>
+
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

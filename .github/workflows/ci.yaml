@@ -2,60 +2,67 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, frontend-update]
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
-  pull-requests: write
+    branches: [main, frontend-update]
 
 jobs:
-  test-and-audit:
-    name: Test, Audit & Validate
+  quality-gate:
+    name: Security & E2E Testing
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Python Security Audit (Bandit)
-        run: |
-          pip install bandit
-          bandit -r . -x ./venv
-
-      - name: Validate App Spec
-        uses: digitalocean/app_action/deploy@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          # Use 'print_only' to validate the spec without deploying 
-          # during the audit phase
-          print_only: "true" 
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Build Frontend Assets
+        working-directory: ./frontend
+        run: |
+          npm install
+          npm run build
+        # This creates the ./frontend/dist folder required by the Dockerfile
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Podman-Compose
+        run: pip install podman-compose
+
+      - name: Install Selenium Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Run Full Test Suite
+        run: make test-all
+        # make test-all triggers test-security, then up (build), then test-e2e
+
+      - name: Upload Screenshots on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshot
+          path: e2e_error.png
 
   deploy:
-    name: Deploy
-    needs: test-and-audit
+    name: Deploy to DigitalOcean
+    needs: quality-gate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy to DigitalOcean
-        id: deploy
+      - name: Deploy to App Platform
         uses: digitalocean/app_action/deploy@v2
         with:
-          # This flag tells DO to create a NEW temporary app for PRs
-          # but update the EXISTING app for pushes to main
-          deploy_pr_preview: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Comment PR with Link
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `🚀 **PR Preview Deployed!**\nURL: ${{ fromJson(steps.deploy.outputs.app).live_url }}`
-            })
+          app_spec_location: ".do/app.yaml"

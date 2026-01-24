@@ -1,61 +1,53 @@
 # Variables
-COMPOSE = podman-compose
-PYTHON = python3
-NPM = npm
+APP_NAME := cnnct
+COMPOSE  := podman-compose
+VENV     := venv
+PYTHON   := $(VENV)/bin/python3
+PIP      := $(VENV)/bin/pip3
+BANDIT   := $(VENV)/bin/bandit
 
-.PHONY: help dev build down logs clean shell-backend validate lint-backend lint-frontend validate-spec check
+.PHONY: help install build up down test-security test-e2e test-all validate-spec clean
 
-help: ## Show this help message
+help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-# --- VALIDATION & LINTING ---
+$(VENV)/bin/activate:
+	python3 -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+	$(PIP) install -r requirements-dev.txt
+	@touch $(VENV)/bin/activate
 
-validate: lint-backend lint-frontend validate-spec ## Run all local linters and validations
+install: $(VENV)/bin/activate ## Create venv and install dependencies
 
-lint-backend: ## Lint Python code and run security audit
-	@echo "🔍 Auditing Backend..."
-	flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-	bandit -r . -x ./venv
+test-security: install ## Run Bandit security audit
+	@echo "🛡️  Running Security Audit..."
+	$(BANDIT) -r . -x ./$(VENV)
 
-lint-frontend: ## Check TypeScript types by running a build
-	@echo "🔍 Checking Frontend Types..."
-	cd frontend && $(NPM) install && $(NPM) run build
+# This target ensures the driver is executable on macOS - ignored on Linux/CI
+fix-mac-security: 
+	@echo "🔓 Checking for macOS security flags..."
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		find ~/.wdm/drivers -name "chromedriver" -exec xattr -d com.apple.quarantine {} + 2>/dev/null || true; \
+	fi
 
-validate-spec: ## Validate DigitalOcean App Spec
-	@echo "🔍 Validating App Spec..."
-	doctl apps spec validate .do/app.yaml
+build: ## Build images
+	$(COMPOSE) build --no-cache
 
-# --- INFRASTRUCTURE ---
+up: ## Start stack
+	$(COMPOSE) up -d
 
-dev: ## Start stack and wait for health
-	$(COMPOSE) up -d --build
-	@echo "⏳ Waiting for services to initialize..."
-	@sleep 5
-	@make check
-	@echo "🚀 App fully ready at http://localhost"
-
-check: ## Verify health of all services
-	@echo "🔍 Checking Redis..."
-	@$(COMPOSE) exec redis redis-cli ping | grep -q "PONG" && echo "✅ Redis is online" || echo "❌ Redis is offline"
-	
-	@echo "🔍 Checking Backend API (Healthz)..."
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz | grep -q "200" && echo "✅ Backend is responding" || echo "❌ Backend is failing"
-	
-	@echo "🔍 Checking Frontend UI..."
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost | grep -q "200" && echo "✅ Frontend is serving" || echo "❌ Frontend is failing"
-
-build: ## Rebuild all containers without starting them
-	$(COMPOSE) build
-
-down: ## Stop and remove all containers
+down: ## Stop stack
 	$(COMPOSE) down
 
-logs: ## Follow logs from all containers (explicitly named to avoid Podman remote errors)
-	$(COMPOSE) logs -f backend frontend redis
+test-e2e: up install fix-mac-security ## Run Selenium E2E tests
+	@echo "🚀 Running E2E Tests..."
+	@sleep 10
+	$(PYTHON) tests/e2e_test.py
 
-clean: ## Remove containers and delete volumes (wipes Redis data)
-	$(COMPOSE) down -v
-	@echo "🧹 Environment cleaned."
+test-all: test-security test-e2e ## Run full suite
+	@echo "✅ All tests passed!"
 
-shell-backend: ## Jump into the running backend container for debugging
-	$(COMPOSE) exec backend /bin/bash
+clean: down
+	rm -rf $(VENV)
+	podman system prune -f
