@@ -2,9 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, frontend-update]
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
   pull_request:
-    branches: [main, frontend-update]
+    branches: [main]
 
 jobs:
   quality-gate:
