@@ -3,6 +3,7 @@ region: nyc
 domains:
   - domain: cnnct.metaciety.net
     type: PRIMARY
+    zone: metaciety.net
 services:
   - name: backend-api
     github:
