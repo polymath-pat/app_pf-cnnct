@@ -9,7 +9,7 @@ services:
     github:
       repo: polymath-pat/doap-cnnct
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false
     source_dir: /
     dockerfile_path: backend.Dockerfile
     http_port: 8080
@@ -32,7 +32,7 @@ static_sites:
     github:
       repo: polymath-pat/doap-cnnct
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false
     source_dir: /frontend
     build_command: npm run build
     output_dir: dist
