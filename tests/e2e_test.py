@@ -20,6 +20,7 @@ def run_e2e_test():
     chrome_options.add_argument("--window-size=1920,1080")
 
     driver = None
+    current_step = "Initializing Driver"
 
     try:
         # 2. Patch for macOS ARM64 / Linux Driver path issue
@@ -27,7 +28,7 @@ def run_e2e_test():
         if "THIRD_PARTY_NOTICES" in driver_path:
             driver_path = os.path.join(os.path.dirname(driver_path), "chromedriver")
         
-        # Ensure the binary is executable (Crucial for macOS and CI)
+        # Ensure the binary is executable
         st = os.stat(driver_path)
         os.chmod(driver_path, st.st_mode | stat.S_IEXEC)
         print(f"✅ Driver ready: {driver_path}")
@@ -35,40 +36,59 @@ def run_e2e_test():
         service = ChromeService(executable_path=driver_path)
         driver = webdriver.Chrome(service=service, options=chrome_options)
 
-        # 3. Load App - Using port 8081 for rootless Podman compatibility
-        wait = WebDriverWait(driver, 20) # Increased timeout for CI stability
+        # 3. Load App
+        current_step = "Loading Application URL"
+        wait = WebDriverWait(driver, 20) 
         target_url = "http://localhost:8081"
-        print(f"🚀 Loading app at {target_url}...")
+        print(f"🚀 [STEP: {current_step}] Loading app at {target_url}...")
         driver.get(target_url)
 
-        # 4. Verify UI Identity (Modern Glassmorphic Header)
+        # 4. Verify UI Identity
+        current_step = "Verifying Branding (H1)"
         logo = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
         if "CNNCT" not in logo.text:
-            print(f"❌ UI Mismatch: Found '{logo.text}' but expected 'CNNCT'.")
+            print(f"❌ [FAILED: {current_step}] Found '{logo.text}' but expected 'CNNCT'.")
             sys.exit(1)
+        print(f"✅ [PASSED: {current_step}]")
 
         # 5. Perform Interaction
+        current_step = "Submitting Target Input"
         target_input = wait.until(EC.presence_of_element_located((By.ID, "target-input")))
-        print("⌨️  Submitting probe for doompatrol.io...")
-        target_input.send_keys("doompatrol.io")
+        
+        test_target = "doompatrol.io"
+        print(f"⌨️  [STEP: {current_step}] Submitting probe for {test_target}...")
+        target_input.send_keys(test_target)
         target_input.send_keys(Keys.ENTER)
 
-        # 6. Verify Results Rendered (Looking for the 'Service Port' label in JS output)
-        print("⏳ Waiting for API response results...")
-        wait.until(EC.text_to_be_present_in_element((By.ID, "results-area"), "Service Port"))
+        # 6. Verify Results Rendered
+        current_step = "Waiting for Backend Results"
+        print(f"⏳ [STEP: {current_step}] Waiting for API response...")
         
-        results = driver.find_element(By.ID, "results-area").text
-        if any(status in results for status in ["ONLINE", "OFFLINE"]):
-            print("✨ E2E SUCCESS: Results are visible in the modern UI.")
+        # We wait for the "TCP Port" label to appear
+        wait.until(EC.text_to_be_present_in_element((By.ID, "results-area"), "TCP Port"))
+        
+        results_element = driver.find_element(By.ID, "results-area")
+        results_text = results_element.text
+        
+        current_step = "Validating Result Content"
+        # Convert to upper to handle Case Sensitivity ("OPEN" vs "Open")
+        normalized_results = results_text.upper()
+        
+        # Check for icons and text regardless of casing
+        if any(status in normalized_results for status in ["✅ OPEN", "❌ CLOSED"]):
+            print(f"✅ [PASSED: {current_step}] Results are visible and valid.")
+            print(f"✨ E2E SUCCESS")
         else:
-            print("❌ Results area found but status text is missing.")
+            print(f"❌ [FAILED: {current_step}] Status indicators not found.")
+            print(f"Captured text was: \n---\n{results_text}\n---")
             sys.exit(1)
 
     except Exception as e:
-        print(f"🔥 Test Error: {str(e)}")
+        print(f"\n🔥 [CRITICAL FAILURE during: {current_step}]")
+        print(f"Error Message: {str(e)}")
         if driver:
             driver.save_screenshot("e2e_error.png")
-            print("📸 Error screenshot saved to e2e_error.png")
+            print(f"📸 Screenshot saved to e2e_error.png")
         sys.exit(1)
         
     finally:
