@@ -6,6 +6,7 @@ services:
       repo: polymath-pat/doap-cnnct
       branch: main
       deploy_on_push: true
+      deploy_pr_preview: true
     source_dir: /
     dockerfile_path: backend.Dockerfile
     http_port: 8080
@@ -29,6 +30,7 @@ static_sites:
       repo: polymath-pat/doap-cnnct
       branch: main
       deploy_on_push: true
+      deploy_pr_preview: true
     source_dir: /frontend
     build_command: npm run build
     output_dir: dist
