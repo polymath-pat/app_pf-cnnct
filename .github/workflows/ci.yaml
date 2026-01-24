@@ -4,10 +4,17 @@ on:
   push:
     branches: 
       - main
+  pull_request:
+    branches: 
+      - main
       - 'feature/**'
       - 'fix/**'
-  pull_request:
-    branches: [main]
+      - 'bug/**'
+
+# Permissions required for DigitalOcean to post Preview URLs to Pull Requests
+permissions:
+  pull-requests: write
+  contents: read
 
 jobs:
   quality-gate:

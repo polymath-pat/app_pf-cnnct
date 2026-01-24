@@ -2,6 +2,7 @@
 APP_NAME := cnnct
 COMPOSE  := podman-compose
 VENV     := venv
+PYTHON_VER := python3.11
 PYTHON   := $(VENV)/bin/python3
 PIP      := $(VENV)/bin/pip3
 BANDIT   := $(VENV)/bin/bandit
@@ -12,7 +13,7 @@ help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 $(VENV)/bin/activate:
-	python3 -m venv $(VENV)
+	$(PYTHON_VER) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	$(PIP) install -r requirements-dev.txt
