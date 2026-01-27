@@ -74,26 +74,27 @@ jobs:
           docker push registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}
 
   deploy:
-    name: DigitalOcean Deploy
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to App Platform
-        uses: digitalocean/app_action/deploy@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          app_spec_location: ".do/app.yaml"
-          deploy_pr_preview: ${{ github.event_name == 'pull_request' }}
-          images: |
-            [
-              {
-                "name": "backend-api",
-                "image": {
-                  "registry_type": "DOCR",
-                  "repository": "backend-api",
-                  "tag": "${{ github.sha }}"
-                }
-              }
-            ]
+      name: DigitalOcean Deploy
+      needs: build-and-push
+      if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        
+        - name: Install doctl
+          uses: digitalocean/action-doctl@v2
+          with:
+            token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+  
+        - name: Deploy to App Platform
+          uses: digitalocean/app_action/deploy@v2
+          with:
+            token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+            app_spec_location: ".do/app.yaml"
+            deploy_pr_preview: ${{ github.event_name == 'pull_request' }}
+  
+        # After the initial deploy triggers, we update the service to use the specific SHA image
+        - name: Update App with Tagged Image
+          run: |
+            APP_ID=$(doctl app list --format ID --no-header | head -n 1)
+            doctl app update $APP_ID --spec .do/app.yaml --set-image backend-api=registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}

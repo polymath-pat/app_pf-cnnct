@@ -10,8 +10,6 @@ services:
       registry_type: DOCR
       repository: backend-api
       tag: latest
-    source_dir: /
-    dockerfile_path: backend.Dockerfile
     http_port: 8080
     instance_count: 1
     instance_size_slug: basic-xxs
