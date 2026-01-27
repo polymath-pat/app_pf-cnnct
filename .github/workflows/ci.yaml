@@ -93,29 +93,17 @@ jobs:
           docker push registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}
 
   deploy:
-    name: DigitalOcean Deploy
+    name: Pulumi Deploy
     needs: build-and-push
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+      - uses: pulumi/actions@v4
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Update App Spec and Deploy
-        run: |
-          # 1. Get the App ID
-          APP_ID=$(doctl app list --format ID --no-header | head -n 1)
-          
-          # 2. Use 'sed' to replace the placeholder 'latest' tag with the actual SHA
-          # This modifies the file in the runner before doctl reads it
-          sed -i "s|tag: latest|tag: ${{ github.sha }}|g" .do/app.yaml
-          
-          # 3. Update the app using the modified spec
-          doctl app update $APP_ID --spec .do/app.yaml
-          
-          # 4. (Optional) Force a new deployment if the spec didn't change enough to trigger one
-          doctl app create-deployment $APP_ID
+          command: up
+          stack-name: dev
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
