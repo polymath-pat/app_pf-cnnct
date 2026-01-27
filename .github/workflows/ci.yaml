@@ -33,22 +33,19 @@ jobs:
           python -m venv venv
           venv/bin/pip install -r requirements.txt pytest requests-mock
           make test-unit
-
   e2e-testing:
     name: E2E Browser Tests
     needs: unit-tests
     runs-on: ubuntu-latest
+    container:
+      image: registry.digitalocean.com/kadet-cantu/e2e-tester:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup System Deps
+      - name: Run Tests
         run: |
-          sudo apt-get update && sudo apt-get install -y google-chrome-stable
-          pip install podman-compose
-      - name: Build and Test
-        run: |
-          # Matches Makefile: build assets -> spin up containers -> test
+          # No need to install chrome or pip requirements anymore!
           make infra-up
-          make test-e2e
+          python tests/e2e_test.py
       - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
@@ -57,7 +54,7 @@ jobs:
           path: e2e_error.png
 
   build-and-push:
-    name: Build & Push Image
+    name: Build & Push Images
     needs: e2e-testing
     runs-on: ubuntu-latest
     steps:
@@ -66,12 +63,25 @@ jobs:
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - name: Log in to DigitalOcean Container Registry
+      
+      - name: Log in to DOCR
         run: doctl registry login --expiry-seconds 600
-      - name: Build and Push Backend Image
+
+      # 1. Build and Push the E2E Tester Image
+      - name: Build E2E Tester Image
         run: |
-          docker build -t registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }} -f backend.Dockerfile .
-          docker push registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}
+          # Note: Build context is '.' but we point to the Dockerfile in tests/
+          docker build -t registry.digitalocean.com/kadet-cantu/e2e-tester:latest -f tests/e2e.Dockerfile .
+      
+      - name: Push E2E Tester Image
+        run: docker push registry.digitalocean.com/kadet-cantu/e2e-tester:latest
+
+      # 2. Build and Push the Backend Image
+      - name: Build Backend Image
+        run: docker build -t registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }} -f backend.Dockerfile .
+      
+      - name: Push Backend Image
+        run: docker push registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}
 
   deploy:
       name: DigitalOcean Deploy

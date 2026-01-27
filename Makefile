@@ -4,7 +4,11 @@ PYTHON := $(VENV)/bin/python3
 PIP := $(VENV)/bin/pip
 BIN := $(VENV)/bin
 
-.PHONY: help venv test-security test-unit test-e2e test-all infra-up infra-down build-frontend clean
+# Registry variables for DigitalOcean
+REGISTRY := registry.digitalocean.com/kadet-cantu
+TESTER_IMAGE := $(REGISTRY)/e2e-tester:latest
+
+.PHONY: help venv test-security test-unit test-e2e test-all infra-up infra-down build-frontend clean push-tester
 
 help:
 	@echo "Available commands:"
@@ -12,6 +16,7 @@ help:
 	@echo "  make test-unit      - Run Unit Tests (sets PYTHONPATH)"
 	@echo "  make infra-up       - Build frontend, start containers, and wait for health"
 	@echo "  make test-e2e       - Run Selenium tests against port 3000"
+	@echo "  make push-tester    - Build and push E2E tester image to DOCR"
 	@echo "  make test-all       - Full pipeline: Security -> Unit -> Infra -> E2E -> Cleanup"
 
 $(VENV)/bin/activate:
@@ -65,6 +70,14 @@ test-all:
 	@$(MAKE) test-e2e || ( $(MAKE) infra-down && exit 1 )
 	@$(MAKE) infra-down
 	@echo ">>> [SUCCESS] All stages passed."
+
+# --- STEP 7: Maintenance / Tester Image ---
+# Build and push the e2e tester image to DOCR
+push-tester:
+	@echo ">>> Building E2E Tester Image..."
+	docker build -t $(TESTER_IMAGE) -f tests/e2e.Dockerfile .
+	@echo ">>> Pushing E2E Tester Image to DOCR..."
+	docker push $(TESTER_IMAGE)
 
 clean:
 	@$(MAKE) infra-down || true
