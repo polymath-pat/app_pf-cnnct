@@ -6,10 +6,10 @@ domains:
     zone: metaciety.net
 services:
   - name: backend-api
-    github:
-      repo: polymath-pat/doap-cnnct
-      branch: main
-      deploy_on_push: false
+    image:
+      registry_type: DOCR
+      repository: backend-api
+      tag: latest
     source_dir: /
     dockerfile_path: backend.Dockerfile
     http_port: 8080

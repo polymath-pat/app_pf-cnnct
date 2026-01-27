@@ -72,8 +72,8 @@ jobs:
       - name: Build and Push Backend Image
         run: |
           # Tag with the commit SHA for unique, immutable deployments
-          docker build -t registry.digitalocean.com/your-registry/backend-api:${{ github.sha }} -f backend.Dockerfile .
-          docker push registry.digitalocean.com/your-registry/backend-api:${{ github.sha }}
+          docker build -t registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }} -f backend.Dockerfile .
+          docker push registry.digitalocean.com/kadet-cantu/backend-api:${{ github.sha }}
 
   deploy:
     name: DigitalOcean Deploy
