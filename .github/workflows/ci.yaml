@@ -2,66 +2,54 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: 
-      - main
+    branches: [main, 'feature/**', 'fix/**', 'bug/**']
   pull_request:
-    branches: 
-      - main
-      - 'feature/**'
-      - 'fix/**'
-      - 'bug/**'
+    branches: [main, 'feature/**', 'fix/**', 'bug/**']
 
-# Permissions required for DigitalOcean to post Preview URLs to Pull Requests
 permissions:
   pull-requests: write
   contents: read
 
 jobs:
-  quality-gate:
-    name: Quality Gate
+  security-audit:
+    name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package-lock.json'
-
-      - name: Build Frontend Assets
-        working-directory: ./frontend
+      - uses: actions/checkout@v4
+      - name: Run Bandit
         run: |
-          npm install
-          npm run build
+          python -m venv venv
+          venv/bin/pip install bandit
+          make test-security
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Prepare Virtual Environment
+  unit-tests:
+    name: Unit Logic Tests
+    needs: security-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Pytest
         run: |
-          pip install podman-compose
-          make virt-env
+          python -m venv venv
+          venv/bin/pip install -r requirements.txt pytest requests-mock
+          make test-unit
 
-      - name: Run Security Audit
-        run: make test-security
-
-      - name: Spin Up Infrastructure
+  e2e-testing:
+    name: E2E Browser Tests
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup System Deps
         run: |
           sudo apt-get update && sudo apt-get install -y google-chrome-stable
-          make build
-          make up
-          echo "Waiting for services..."
-          sleep 12
-
-      - name: Execute E2E Tests
-        run: make run-e2e
-
-      - name: Upload Screenshots on Failure
+          pip install podman-compose
+      - name: Build and Test
+        run: |
+          # Matches Makefile: build assets -> spin up containers -> test
+          make infra-up
+          make test-e2e
+      - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -69,15 +57,12 @@ jobs:
           path: e2e_error.png
 
   deploy:
-    name: Deploy to DigitalOcean
-    needs: quality-gate
-    # Deploy on main or for any pull request (DigitalOcean PR Preview)
+    name: DigitalOcean Deploy
+    needs: e2e-testing
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Deploy to App Platform
         uses: digitalocean/app_action/deploy@v2
         with:

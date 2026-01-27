@@ -1,22 +1,21 @@
 FROM python:3.11-slim
+
 WORKDIR /app
 
 # Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only the backend-related files to keep the image slim
-COPY app.py .
-# If you have other backend folders, copy them explicitly
-# COPY api/ ./api/ 
+# Copy everything from local src/ into container /app/
+COPY src/ .
 
-# Set environment variables for Bandit/Security and Gunicorn
-ENV HOST=0.0.0.0
-ENV PORT=8080
-# logging support
-ENV PYTHONUNBUFFERED=1
+# Ensure the container sees the current dir as a python package
+ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-# Use the full path to the module to be explicit
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]

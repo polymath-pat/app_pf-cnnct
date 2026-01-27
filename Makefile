@@ -1,56 +1,73 @@
 # Variables
-APP_NAME := cnnct
-COMPOSE  := podman-compose
-VENV     := venv
-PYTHON_VER := python3.11
-PYTHON   := $(VENV)/bin/python3
-PIP      := $(VENV)/bin/pip3
-BANDIT   := $(VENV)/bin/bandit
+VENV := venv
+PYTHON := $(VENV)/bin/python3
+PIP := $(VENV)/bin/pip
+BIN := $(VENV)/bin
 
-.PHONY: help virt-env build up down test-security run-e2e test-all clean fix-mac-security
+.PHONY: help venv test-security test-unit test-e2e test-all infra-up infra-down build-frontend clean
 
-help: ## Show help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+help:
+	@echo "Available commands:"
+	@echo "  make test-security  - Run Bandit (scans ./src only)"
+	@echo "  make test-unit      - Run Unit Tests (sets PYTHONPATH)"
+	@echo "  make infra-up       - Build frontend, start containers, and wait for health"
+	@echo "  make test-e2e       - Run Selenium tests against port 3000"
+	@echo "  make test-all       - Full pipeline: Security -> Unit -> Infra -> E2E -> Cleanup"
 
 $(VENV)/bin/activate:
-	$(PYTHON_VER) -m venv $(VENV)
+	python3 -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
-	$(PIP) install -r requirements-dev.txt
-	@touch $(VENV)/bin/activate
+	$(PIP) install bandit pytest requests-mock selenium webdriver-manager
 
-virt-env: $(VENV)/bin/activate ## Create venv and install dependencies
+# --- STEP 1: Security ---
+test-security: $(VENV)/bin/activate
+	@echo ">>> Running Security Audit..."
+	$(BIN)/bandit -r ./src
 
-test-security: ## Run Bandit security audit
-	@echo "🛡️  Running Security Audit..."
-	$(BANDIT) -r . -x ./$(VENV)
+# --- STEP 2: Unit Tests ---
+test-unit: $(VENV)/bin/activate
+	@echo ">>> Running Unit Tests..."
+	PYTHONPATH=. $(BIN)/pytest tests/unit_test.py
 
-fix-mac-security: ## Remove quarantine flags (macOS only)
-	@echo "🔓 Checking for macOS security flags..."
-	@if [ "$$(uname)" = "Darwin" ]; then \
-		find ~/.wdm/drivers -name "chromedriver" -exec xattr -d com.apple.quarantine {} + 2>/dev/null || true; \
-	fi
+# --- STEP 3: Frontend Build (Required for Compose Volumes) ---
+build-frontend:
+	@echo ">>> Building Frontend Assets..."
+	cd frontend && npm install && npm run build
 
-build: ## Build images
-	$(COMPOSE) build --no-cache
+# --- STEP 4: Infrastructure with Health Wait ---
+infra-up: build-frontend
+	@echo ">>> Starting Infrastructure..."
+	podman-compose build
+	podman-compose up -d
+	@echo ">>> Waiting for Frontend to be ready on port 3000..."
+	@until $$(curl --output /dev/null --silent --head --fail http://localhost:3000); do \
+		printf '.'; \
+		sleep 1; \
+	done
+	@echo " Ready!"
 
-up: ## Start stack in detached mode
-	$(COMPOSE) up -d
+infra-down:
+	@echo ">>> Stopping Infrastructure..."
+	podman-compose down
 
-down: ## Stop stack
-	$(COMPOSE) down
-
-run-e2e: fix-mac-security ## Execute Selenium script (assumes stack is up)
-	@echo "🚀 Executing E2E Script..."
+# --- STEP 5: E2E Testing ---
+test-e2e: $(VENV)/bin/activate
+	@echo ">>> Running E2E Tests..."
 	$(PYTHON) tests/e2e_test.py
 
-test-all: virt-env build up ## Run full suite locally
-	@echo "⏳ Waiting for services to stabilize..."
-	@sleep 12
-	$(MAKE) test-security
-	$(MAKE) run-e2e
-	@echo "✅ All tests passed!"
+# --- STEP 6: Combined Pipeline ---
+test-all: 
+	@$(MAKE) test-security
+	@$(MAKE) test-unit
+	@echo ">>> Logic tests passed. Moving to Integration..."
+	@$(MAKE) infra-up
+	@$(MAKE) test-e2e || ( $(MAKE) infra-down && exit 1 )
+	@$(MAKE) infra-down
+	@echo ">>> [SUCCESS] All stages passed."
 
-clean: down ## Clean environment
+clean:
+	@$(MAKE) infra-down || true
 	rm -rf $(VENV)
-	podman system prune -f
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	rm -rf frontend/dist

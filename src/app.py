@@ -45,7 +45,7 @@ def check_dns(domain):
         ips = [ip.to_text() for ip in result]
         return jsonify({"target": domain, "records": ips, "timestamp": time.time()})
     except Exception as e:
-        logger.error(f"DNS lookup failed for {domain}: {str(e)}")
+        logger.error(f"DNS lookup failed: {str(e)}")
         return jsonify({"error": str(e)}), 400
 
 # Nginx proxies /api/cnnct to /cnnct
@@ -62,14 +62,50 @@ def cnnct():
             results["tcp_443"] = True
             latency = (time.perf_counter() - start_time) * 1000
             results["latency_ms"] = round(latency, 2)
-    except Exception:
-        # B110: pass is replaced with a log to indicate the port is closed/unreachable
-        logger.info(f"Connection failed to {target} on port 443")
-    
+    except Exception as e:
+        logger.info(f"Connection failed to {target}: {str(e)}")
     return jsonify(results)
 
+# New HTTP Diagnostic Route
+@app.route('/diag', methods=['GET'])
+@limiter.limit("5 per minute")
+def diagnose_url():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "No URL specified"}), 400
+    
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+
+    try:
+        start_time = time.perf_counter()
+        response = requests.get(url, timeout=5, allow_redirects=True)
+        total_time = time.perf_counter() - start_time
+        
+        speed_download = len(response.content) / total_time if total_time > 0 else 0
+        
+        remote_ip = "Unknown"
+        try:
+            remote_ip = socket.gethostbyname(response.url.split('//')[1].split('/')[0])
+        except Exception as e:
+            logger.info(f"Could not resolve remote IP for {url}: {e}")
+
+        return jsonify({
+            "url": response.url,
+            "http_code": response.status_code,
+            "method": request.method,
+            "remote_ip": remote_ip,
+            "total_time_ms": round(total_time * 1000, 2),
+            "speed_download_bps": round(speed_download, 2),
+            "content_type": response.headers.get('Content-Type', 'unknown'),
+            "redirects": len(response.history)
+        })
+    except Exception as e:
+        logger.error(f"HTTP Diag failed for {url}: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
 if __name__ == "__main__":
-    # B104: Binding to 0.0.0.0 is required for container networking
+    # Bandit B104: binding to 0.0.0.0 is required for container networking
     host = os.environ.get("HOST", "0.0.0.0")  # nosec B104
     port = int(os.environ.get("PORT", 8080))
     app.run(host=host, port=port)
