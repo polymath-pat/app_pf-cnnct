@@ -37,21 +37,41 @@ jobs:
     name: E2E Browser Tests
     needs: unit-tests
     runs-on: ubuntu-latest
-    container:
-      image: registry.digitalocean.com/kadet-cantu/e2e-tester:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Tests
+
+      # 1. Login so we can pull the tester image
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 600
+
+      # 2. Setup Podman/Docker for your infrastructure
+      - name: Setup Infrastructure Deps
+        run: pip install podman-compose
+
+      # 3. Pull and Run the E2E test inside your custom container
+      - name: Run E2E Tests
         run: |
-          # No need to install chrome or pip requirements anymore!
+          # Start your app infrastructure (API, Redis, etc.)
           make infra-up
-          python tests/e2e_test.py
+          
+          # Run the tester image against the host network
+          docker run --rm \
+            --network host \
+            -v $(pwd)/tests:/app/tests \
+            registry.digitalocean.com/kadet-cantu/e2e-tester:latest \
+            python3 tests/e2e_test.py
+
       - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-failure-screenshot
-          path: e2e_error.png
+          path: tests/error-*.png # Adjust path if your script saves elsewhere
 
   build-and-push:
     name: Build & Push Images

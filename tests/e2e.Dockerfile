@@ -1,28 +1,24 @@
 # tests/e2e.Dockerfile
+# Force AMD64 to allow Chrome to run on Apple Silicon via emulation
+FROM --platform=linux/amd64 selenium/standalone-chrome:latest
 
-FROM python:3.11-slim
+USER root
 
-# Install Chrome and system dependencies
+# Install Python and dependencies
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    curl \
-    unzip \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
-    && apt-get update && apt-get install -y google-chrome-stable \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements from the project root (requires specific build context)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt selenium webdriver-manager
+# Copy and install requirements
+COPY tests/requirements-e2e.txt .
+RUN pip3 install --no-cache-dir selenium webdriver-manager pytest requests-mock --break-system-packages
 
-# Copy the actual test files
 COPY tests/ /app/tests/
+COPY Makefile .
 
-# Set Python path so it can find modules if needed
 ENV PYTHONPATH=/app
 
-CMD ["python", "tests/e2e_test.py"]
+CMD ["python3", "tests/e2e_test.py"]

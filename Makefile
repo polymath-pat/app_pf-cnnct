@@ -23,6 +23,7 @@ $(VENV)/bin/activate:
 	python3 -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
+	$(PIP) install -r tests/requirements-e2e.txt
 	$(PIP) install bandit pytest requests-mock selenium webdriver-manager
 
 # --- STEP 1: Security ---
