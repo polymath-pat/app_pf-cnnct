@@ -213,3 +213,23 @@ node_modules/
 *.png
 package-lock.json
 package.json
+
+# Pulumi
+.pulumi/
+bin/
+obj/
+Pulumi.yaml
+Pulumi.dev.yaml
+
+# Node / Dependencies
+node_modules/
+npm-debug.log*
+
+# Test Artifacts
+tests/error-screenshot.png
+e2e_error.png
+
+# Local Env Files
+.env
+.env.local
+

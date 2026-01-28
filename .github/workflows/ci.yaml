@@ -99,11 +99,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pulumi/actions@v4
-        with:
-          command: up
-          stack-name: dev
+
+      - name: Install Pulumi CLI
+        run: curl -fsSL https://get.pulumi.com | sh
+
+      - name: Pulumi Deploy (Self-Managed)
+        run: |
+          export PATH=$PATH:$HOME/.pulumi/bin
+          # Login using the specific SFO3 endpoint from your config
+          pulumi login s3://doap-cnnt?endpoint=sfo3.digitaloceanspaces.com
+          
+          # Deploy the 'prod' stack
+          pulumi up --stack prod --yes --non-interactive
         env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          # Use your Spaces Credentials (DO00EQUEMA9WAXN7P9PR)
+          AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          # Routing information for SFO3
+          PULUMI_S3_ENDPOINT: https://sfo3.digitaloceanspaces.com
+          PULUMI_S3_REGION: sfo3
+          # Required for state file encryption
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
+          # Pass the SHA for image tagging in index.ts
           GITHUB_SHA: ${{ github.sha }}
