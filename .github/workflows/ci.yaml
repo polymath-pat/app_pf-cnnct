@@ -106,7 +106,7 @@ jobs:
       - name: Pulumi Deploy (Self-Managed)
         run: |
           export PATH=$PATH:$HOME/.pulumi/bin
-          pulumi login s3://doap-cnnct
+          pulumi login s3://doap-cnnct?endpoint=sfo3.digitaloceanspaces.com
           
           # Deploy the 'prod' stack
           pulumi up --stack prod --yes --non-interactive
