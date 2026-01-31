@@ -48,7 +48,6 @@ const app = new digitalocean.App("cnnct-app", {
                 { key: "HOST", value: "0.0.0.0" },
                 { key: "PORT", value: "8080" },
             ],
-            routes: [{ path: "/api", preservePathPrefix: true }],
         }],
 
         // Frontend static site (built from source)
@@ -62,8 +61,21 @@ const app = new digitalocean.App("cnnct-app", {
             sourceDir: "/frontend",
             buildCommand: "npm install && npm run build",
             outputDir: "/dist",
-            routes: [{ path: "/" }],
         }],
+
+        // Ingress routing
+        ingress: {
+            rules: [
+                {
+                    match: { path: { prefix: "/api" } },
+                    component: { name: "backend-api", preservePathPrefix: true },
+                },
+                {
+                    match: { path: { prefix: "/" } },
+                    component: { name: "frontend" },
+                },
+            ],
+        },
     },
 });
 
