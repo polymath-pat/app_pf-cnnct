@@ -118,4 +118,4 @@ jobs:
           PULUMI_S3_REGION: sfo3
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
           GITHUB_SHA: ${{ github.sha }}
-          AWS_REGION: us-east-1
+          AWS_REGION: sfo3
