@@ -48,7 +48,6 @@ const app = new digitalocean.App("cnnct-app", {
                 { key: "HOST", value: "0.0.0.0" },
                 { key: "PORT", value: "8080" },
             ],
-            routes: [{ path: "/api", preservePathPrefix: true }],
         }],
 
         // Frontend static site (built from source)
@@ -62,11 +61,43 @@ const app = new digitalocean.App("cnnct-app", {
             sourceDir: "/frontend",
             buildCommand: "npm install && npm run build",
             outputDir: "/dist",
-            routes: [{ path: "/" }],
         }],
+
+        // Custom domain
+        domainNames: [{
+            name: "cnnct.metaciety.net",
+            type: "ALIAS",
+        }],
+
+        // Ingress routing
+        ingress: {
+            rules: [
+                {
+                    match: { path: { prefix: "/api" } },
+                    component: { name: "backend-api", preservePathPrefix: true },
+                },
+                {
+                    match: { path: { prefix: "/" } },
+                    component: { name: "frontend" },
+                },
+            ],
+        },
     },
+});
+
+// --- DNS: CNAME record for custom domain ---
+const cname = new digitalocean.DnsRecord("cnnct-dns", {
+    domain: "metaciety.net",
+    type: "CNAME",
+    name: "cnnct",
+    value: app.defaultIngress.apply(url => {
+        // Strip https:// to get the hostname, add trailing dot for CNAME
+        return url.replace("https://", "") + ".";
+    }),
+    ttl: 1800,
 });
 
 // --- Outputs ---
 export const appUrl = app.liveUrl;
+export const customDomain = "cnnct.metaciety.net";
 export const dbHost = db.host;
