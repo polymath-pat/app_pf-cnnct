@@ -106,7 +106,7 @@ jobs:
       - name: Pulumi Deploy (Self-Managed)
         run: |
           export PATH=$PATH:$HOME/.pulumi/bin
-          pulumi login s3://doap-cnnct?endpoint=sfo3.digitaloceanspaces.com
+          pulumi login s3://doap-cnnct
           
           # Deploy the 'prod' stack
           pulumi up --stack prod --yes --non-interactive
@@ -114,7 +114,7 @@ jobs:
           DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
-          PULUMI_S3_ENDPOINT: sfo3.digitaloceanspaces.com
+          PULUMI_S3_ENDPOINT: https://sfo3.digitaloceanspaces.com
           PULUMI_S3_REGION: sfo3
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
           GITHUB_SHA: ${{ github.sha }}
