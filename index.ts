@@ -74,7 +74,7 @@ const app = new digitalocean.App("cnnct-app", {
             rules: [
                 {
                     match: { path: { prefix: "/api" } },
-                    component: { name: "backend-api", preservePathPrefix: true },
+                    component: { name: "backend-api", preservePathPrefix: false },
                 },
                 {
                     match: { path: { prefix: "/" } },
