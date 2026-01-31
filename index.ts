@@ -63,6 +63,12 @@ const app = new digitalocean.App("cnnct-app", {
             outputDir: "/dist",
         }],
 
+        // Custom domain
+        domainNames: [{
+            name: "cnnct.metaciety.net",
+            type: "ALIAS",
+        }],
+
         // Ingress routing
         ingress: {
             rules: [
@@ -79,6 +85,19 @@ const app = new digitalocean.App("cnnct-app", {
     },
 });
 
+// --- DNS: CNAME record for custom domain ---
+const cname = new digitalocean.DnsRecord("cnnct-dns", {
+    domain: "metaciety.net",
+    type: "CNAME",
+    name: "cnnct",
+    value: app.defaultIngress.apply(url => {
+        // Strip https:// to get the hostname, add trailing dot for CNAME
+        return url.replace("https://", "") + ".";
+    }),
+    ttl: 1800,
+});
+
 // --- Outputs ---
 export const appUrl = app.liveUrl;
+export const customDomain = "cnnct.metaciety.net";
 export const dbHost = db.host;
