@@ -16,27 +16,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
       - name: Run Bandit
         run: |
-          python -m venv venv
-          venv/bin/pip install bandit
-          make test-security
+          pip install bandit
+          bandit -r ./src
 
   unit-tests:
     name: Unit Logic Tests
-    needs: security-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
       - name: Run Pytest
         run: |
-          python -m venv venv
-          venv/bin/pip install -r requirements.txt pytest requests-mock
-          make test-unit
+          pip install -r requirements.txt pytest requests-mock
+          PYTHONPATH=. pytest tests/unit_test.py
 
   e2e-testing:
     name: E2E Browser Tests
-    needs: unit-tests
+    needs: [security-audit, unit-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +66,7 @@ jobs:
           
           # 2. Run the tester container on the host network
           # We mount the tests folder to get the screenshot back if it fails
-          docker run --rm \
+          podman run --rm \
             --network host \
             -v $(pwd)/tests:/app/tests \
             registry.digitalocean.com/kadet-cantu/e2e-tester:latest \

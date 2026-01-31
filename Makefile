@@ -42,7 +42,7 @@ build-frontend:
 	cd frontend && npm install && npm run build
 
 # --- STEP 4: Infrastructure with Health Wait ---
-infra-up: build-frontend
+infra-up:
 	@echo ">>> Starting Infrastructure..."
 	podman-compose build
 	podman-compose up -d

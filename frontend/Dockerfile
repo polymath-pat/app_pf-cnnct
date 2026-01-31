@@ -1,13 +1,14 @@
-# frontend/Dockerfile
+# Stage 1: Build
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve
 FROM nginx:alpine
-
-# Copy the custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# The 'make build-frontend' command generates the dist folder on the host
-# This COPY is used when the container is built for production/CI
-COPY dist /usr/share/nginx/html
-
+COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]
