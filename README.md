@@ -1,6 +1,8 @@
 # CNNCT | Modern Network Connectivity Tester
 [![CI/CD Pipeline](https://github.com/polymath-pat/doap-cnnct/actions/workflows/ci.yaml/badge.svg)](https://github.com/polymath-pat/doap-cnnct/actions/workflows/ci.yaml)
 
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/polymath-pat/doap-cnnct/tree/main)
+
 A glassmorphic web application for probing network connectivity and diagnostics. CNNCT tests TCP port connectivity, resolves DNS records, runs HTTP diagnostics, and reports backend health — all from a single UI.
 
 ## Features
