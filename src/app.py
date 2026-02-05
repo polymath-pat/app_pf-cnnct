@@ -4,9 +4,11 @@ import sys
 import socket
 import requests
 import time
+import json
 import dns.resolver  # Requires dnspython in requirements.txt
 import redis
 from flask import Flask, request, jsonify
+from datetime import datetime, timezone
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -24,6 +26,15 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
 
 # Configure Rate Limiting
 redis_url = os.environ.get("REDIS_URL", "memory://")
+
+# Webhook receiver configuration
+webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
+webhook_dns_target = os.environ.get("WEBHOOK_DNS_TARGET", "example.com")
+
+# In-memory fallback for webhook results when Redis is unavailable
+_webhook_results_memory: list = []
+WEBHOOK_RESULTS_KEY = "cnnct:webhook_results"
+WEBHOOK_RESULTS_MAX = 50
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -104,6 +115,132 @@ def diagnose_url():
     except Exception as e:
         logger.error(f"HTTP Diag failed for {url}: {str(e)}")
         return jsonify({"error": str(e)}), 400
+
+@app.route('/webhook', methods=['POST'])
+@limiter.limit("5 per minute")
+def send_webhook():
+    """Forward a test payload to a webhook URL."""
+    data = request.get_json() or {}
+    webhook_url = data.get('url')
+    payload = data.get('payload', {})
+
+    if not webhook_url:
+        return jsonify({"error": "No webhook URL specified"}), 400
+
+    if not webhook_url.startswith(('http://', 'https://')):
+        webhook_url = 'https://' + webhook_url
+
+    try:
+        start_time = time.perf_counter()
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=5,
+            headers={'Content-Type': 'application/json'}
+        )
+        total_time = time.perf_counter() - start_time
+
+        return jsonify({
+            "webhook_url": response.url,
+            "http_code": response.status_code,
+            "total_time_ms": round(total_time * 1000, 2),
+            "response_body": response.text[:500],  # Truncate for safety
+            "success": 200 <= response.status_code < 300
+        })
+    except Exception as e:
+        logger.error(f"Webhook failed for {webhook_url}: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+
+def _store_webhook_result(result: dict):
+    """Store a webhook result in Redis or memory fallback."""
+    global _webhook_results_memory
+    result_json = json.dumps(result)
+
+    if redis_url != "memory://":
+        try:
+            r = redis.from_url(redis_url, socket_connect_timeout=3)
+            r.lpush(WEBHOOK_RESULTS_KEY, result_json)
+            r.ltrim(WEBHOOK_RESULTS_KEY, 0, WEBHOOK_RESULTS_MAX - 1)
+            return
+        except Exception as e:
+            logger.warning(f"Redis store failed, using memory: {e}")
+
+    # Memory fallback
+    _webhook_results_memory.insert(0, result)
+    _webhook_results_memory = _webhook_results_memory[:WEBHOOK_RESULTS_MAX]
+
+
+def _get_webhook_results() -> list:
+    """Retrieve webhook results from Redis or memory fallback."""
+    if redis_url != "memory://":
+        try:
+            r = redis.from_url(redis_url, socket_connect_timeout=3)
+            results = r.lrange(WEBHOOK_RESULTS_KEY, 0, WEBHOOK_RESULTS_MAX - 1)
+            return [json.loads(r) for r in results]
+        except Exception as e:
+            logger.warning(f"Redis fetch failed, using memory: {e}")
+
+    return _webhook_results_memory
+
+
+@app.route('/webhook-receive/<secret>', methods=['POST'])
+@limiter.limit("10 per minute")
+def receive_webhook(secret):
+    """Receive incoming webhooks, perform DNS lookup, store results."""
+    if not webhook_secret:
+        return jsonify({"error": "Webhook receiver not configured"}), 503
+
+    if secret != webhook_secret:
+        logger.warning(f"Invalid webhook secret attempt")
+        return jsonify({"error": "Invalid secret"}), 403
+
+    # Parse incoming webhook payload
+    payload = request.get_json() or {}
+    event_type = payload.get("event", "unknown")
+
+    # Perform DNS lookup on configured target
+    dns_records = []
+    dns_error = None
+    try:
+        result = dns.resolver.resolve(webhook_dns_target, 'A')
+        dns_records = [ip.to_text() for ip in result]
+    except Exception as e:
+        dns_error = str(e)
+        logger.error(f"Webhook DNS lookup failed: {dns_error}")
+
+    # Build result entry
+    result_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "event_type": event_type,
+        "source_ip": get_remote_address(),
+        "dns_target": webhook_dns_target,
+        "dns_records": dns_records,
+        "dns_error": dns_error,
+        "payload": payload
+    }
+
+    _store_webhook_result(result_entry)
+    logger.info(f"Webhook received: event={event_type}, dns_records={dns_records}")
+
+    return jsonify({
+        "status": "received",
+        "dns_target": webhook_dns_target,
+        "dns_records": dns_records,
+        "dns_error": dns_error
+    })
+
+
+@app.route('/webhook-results', methods=['GET'])
+@limiter.limit("10 per minute")
+def get_webhook_results():
+    """Retrieve stored webhook results."""
+    results = _get_webhook_results()
+    return jsonify({
+        "count": len(results),
+        "results": results
+    })
+
 
 @app.route('/status', methods=['GET'])
 @limiter.limit("5 per minute")

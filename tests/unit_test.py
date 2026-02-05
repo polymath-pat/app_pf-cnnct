@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 from src.app import app
 import requests_mock
 
@@ -76,3 +76,128 @@ def test_status_redis_connection_failure(mock_redis, client):
     assert data['backend'] == 'redis'
     assert data['connected'] is False
     assert 'error' in data
+
+@patch('src.app.requests.post')
+def test_webhook_success(mock_post, client):
+    """Verify /webhook forwards payload and returns response data."""
+    mock_response = Mock()
+    mock_response.url = 'https://webhook.site/test'
+    mock_response.status_code = 200
+    mock_response.text = 'OK'
+    mock_post.return_value = mock_response
+
+    rv = client.post('/webhook',
+        json={'url': 'https://webhook.site/test', 'payload': {'test': 'data'}},
+        content_type='application/json')
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data['success'] == True
+    assert data['http_code'] == 200
+    assert data['webhook_url'] == 'https://webhook.site/test'
+    assert 'total_time_ms' in data
+
+@patch('src.app.requests.post')
+def test_webhook_missing_url(mock_post, client):
+    """Verify /webhook returns 400 when no URL is provided."""
+    rv = client.post('/webhook',
+        json={'payload': {'test': 'data'}},
+        content_type='application/json')
+
+    assert rv.status_code == 400
+    data = rv.get_json()
+    assert 'error' in data
+
+@patch('src.app.requests.post')
+def test_webhook_adds_https(mock_post, client):
+    """Verify /webhook adds https:// when missing."""
+    mock_response = Mock()
+    mock_response.url = 'https://webhook.site/test'
+    mock_response.status_code = 200
+    mock_response.text = 'OK'
+    mock_post.return_value = mock_response
+
+    rv = client.post('/webhook',
+        json={'url': 'webhook.site/test', 'payload': {}},
+        content_type='application/json')
+
+    assert rv.status_code == 200
+    mock_post.assert_called_once()
+    call_args = mock_post.call_args
+    assert call_args[0][0] == 'https://webhook.site/test'
+
+
+def test_webhook_receive_not_configured(client):
+    """Verify /webhook-receive returns 503 when secret not configured."""
+    rv = client.post('/webhook-receive/any-secret',
+        json={'event': 'test'},
+        content_type='application/json')
+
+    assert rv.status_code == 503
+    data = rv.get_json()
+    assert 'not configured' in data['error']
+
+
+@patch('src.app.webhook_secret', 'test-secret-123')
+def test_webhook_receive_invalid_secret(client):
+    """Verify /webhook-receive returns 403 for invalid secret."""
+    rv = client.post('/webhook-receive/wrong-secret',
+        json={'event': 'test'},
+        content_type='application/json')
+
+    assert rv.status_code == 403
+    data = rv.get_json()
+    assert 'Invalid secret' in data['error']
+
+
+@patch('src.app.webhook_secret', 'test-secret-123')
+@patch('src.app.webhook_dns_target', 'example.com')
+@patch('src.app.dns.resolver.resolve')
+def test_webhook_receive_success(mock_dns, client):
+    """Verify /webhook-receive performs DNS lookup and stores result."""
+    # Mock DNS response
+    mock_ip = Mock()
+    mock_ip.to_text.return_value = '93.184.216.34'
+    mock_dns.return_value = [mock_ip]
+
+    rv = client.post('/webhook-receive/test-secret-123',
+        json={'event': 'pomodoro_complete', 'duration': 25},
+        content_type='application/json')
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data['status'] == 'received'
+    assert data['dns_target'] == 'example.com'
+    assert '93.184.216.34' in data['dns_records']
+    assert data['dns_error'] is None
+
+
+@patch('src.app.webhook_secret', 'test-secret-123')
+@patch('src.app.webhook_dns_target', 'nonexistent.invalid')
+@patch('src.app.dns.resolver.resolve')
+def test_webhook_receive_dns_failure(mock_dns, client):
+    """Verify /webhook-receive handles DNS failures gracefully."""
+    mock_dns.side_effect = Exception("NXDOMAIN")
+
+    rv = client.post('/webhook-receive/test-secret-123',
+        json={'event': 'test'},
+        content_type='application/json')
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data['status'] == 'received'
+    assert data['dns_records'] == []
+    assert 'NXDOMAIN' in data['dns_error']
+
+
+def test_webhook_results_empty(client):
+    """Verify /webhook-results returns empty list initially."""
+    import src.app
+    src.app._webhook_results_memory = []  # Reset memory storage
+
+    rv = client.get('/webhook-results')
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data['count'] == 0
+    assert data['results'] == []

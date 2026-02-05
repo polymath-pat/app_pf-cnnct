@@ -1,1 +1,5 @@
 encryptionsalt: v1:Y8uMwIgK0O8=:v1:GB47I092wk4iwX4e:Jl7kB6QqMJzP/hQaXZfZY7kcE/rHTA==
+config:
+  doap-cnnct:webhookSecret:
+    secure: v1:albnYinoNuxvKIXH:US0/u5v677xHF6jqwwIVXtOOBkW3ID9KQak=
+  doap-cnnct:webhookDnsTarget: doompatrol.io

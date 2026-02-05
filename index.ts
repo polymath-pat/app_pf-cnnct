@@ -47,6 +47,12 @@ const app = new digitalocean.App("cnnct-app", {
                 },
                 { key: "HOST", value: "0.0.0.0" },
                 { key: "PORT", value: "8080" },
+                {
+                    key: "WEBHOOK_SECRET",
+                    value: config.requireSecret("webhookSecret"),
+                    type: "SECRET",
+                },
+                { key: "WEBHOOK_DNS_TARGET", value: config.get("webhookDnsTarget") || "example.com" },
             ],
         }],
 
