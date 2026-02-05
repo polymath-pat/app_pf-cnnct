@@ -5,6 +5,8 @@ const navPort = document.getElementById('nav-port') as HTMLButtonElement;
 const navDns = document.getElementById('nav-dns') as HTMLButtonElement;
 const navDiag = document.getElementById('nav-diag') as HTMLButtonElement;
 const navStatus = document.getElementById('nav-status') as HTMLButtonElement;
+const navWebhook = document.getElementById('nav-webhook') as HTMLButtonElement;
+const payloadInput = document.getElementById('payload-input') as HTMLTextAreaElement;
 const sidebar = document.getElementById('history-sidebar') as HTMLElement;
 const historyList = document.getElementById('history-list') as HTMLDivElement;
 const toggleHistory = document.getElementById('toggle-history') as HTMLButtonElement;
@@ -12,7 +14,7 @@ const closeHistory = document.getElementById('close-history') as HTMLButtonEleme
 
 const presetsArea = document.getElementById('presets-area') as HTMLDivElement;
 
-let currentTab: 'port' | 'dns' | 'diag' | 'status' = 'port';
+let currentTab: 'port' | 'dns' | 'diag' | 'status' | 'webhook' = 'port';
 let testHistory: any[] = JSON.parse(localStorage.getItem('cnnct_history') || '[]');
 let lastResponse: any = null;
 
@@ -83,7 +85,7 @@ toggleHistory.onclick = () => sidebar.classList.remove('-translate-x-full');
 closeHistory.onclick = () => sidebar.classList.add('-translate-x-full');
 
 function updateNav(active: HTMLButtonElement) {
-    [navPort, navDns, navDiag, navStatus].forEach(btn => {
+    [navPort, navDns, navDiag, navStatus, navWebhook].forEach(btn => {
         btn.classList.remove('bg-white/10', 'text-blue-400');
         btn.classList.add('text-slate-400');
     });
@@ -96,6 +98,7 @@ navPort.onclick = () => {
     updateNav(navPort);
     targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
     probeForm.classList.remove('hidden');
+    payloadInput.classList.add('hidden');
     renderPresets();
 };
 
@@ -104,6 +107,7 @@ navDns.onclick = () => {
     updateNav(navDns);
     targetInput.placeholder = "Enter Domain for DNS lookup...";
     probeForm.classList.remove('hidden');
+    payloadInput.classList.add('hidden');
     renderPresets();
 };
 
@@ -112,6 +116,7 @@ navDiag.onclick = () => {
     updateNav(navDiag);
     targetInput.placeholder = "Enter URL (e.g. https://google.com)";
     probeForm.classList.remove('hidden');
+    payloadInput.classList.add('hidden');
     renderPresets();
 };
 
@@ -119,8 +124,18 @@ navStatus.onclick = async () => {
     currentTab = 'status';
     updateNav(navStatus);
     probeForm.classList.add('hidden');
+    payloadInput.classList.add('hidden');
     renderPresets();
     await fetchStatus();
+};
+
+navWebhook.onclick = () => {
+    currentTab = 'webhook';
+    updateNav(navWebhook);
+    targetInput.placeholder = "https://webhook.site/your-unique-id";
+    payloadInput.classList.remove('hidden');
+    probeForm.classList.remove('hidden');
+    renderPresets();
 };
 
 probeForm.addEventListener('submit', async (e: Event) => {
@@ -131,14 +146,30 @@ probeForm.addEventListener('submit', async (e: Event) => {
     resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Probing...</div>`;
     
     try {
-        let endpoint = '';
-        if (currentTab === 'port') endpoint = `/api/cnnct?target=${encodeURIComponent(target)}`;
-        else if (currentTab === 'dns') endpoint = `/api/dns/${encodeURIComponent(target)}`;
-        else if (currentTab === 'diag') endpoint = `/api/diag?url=${encodeURIComponent(target)}`;
+        let response: Response;
 
-        const response = await fetch(endpoint);
+        if (currentTab === 'webhook') {
+            let payload = {};
+            try {
+                payload = payloadInput.value.trim() ? JSON.parse(payloadInput.value) : {};
+            } catch { /* use empty object */ }
+
+            response = await fetch('/api/webhook', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: target, payload })
+            });
+        } else {
+            let endpoint = '';
+            if (currentTab === 'port') endpoint = `/api/cnnct?target=${encodeURIComponent(target)}`;
+            else if (currentTab === 'dns') endpoint = `/api/dns/${encodeURIComponent(target)}`;
+            else if (currentTab === 'diag') endpoint = `/api/diag?url=${encodeURIComponent(target)}`;
+
+            response = await fetch(endpoint);
+        }
+
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
-        
+
         const data = await response.json();
         lastResponse = data;
 
@@ -154,6 +185,10 @@ probeForm.addEventListener('submit', async (e: Event) => {
             renderDiagResults(data);
             attachCopyHandler();
             addToHistory(target, 'HTTP', `${data.http_code} OK`);
+        } else if (currentTab === 'webhook') {
+            renderWebhookResults(data);
+            attachCopyHandler();
+            addToHistory(target, 'Webhook', data.success ? 'Success' : 'Failed');
         }
     } catch (err) {
         lastResponse = null;
@@ -246,6 +281,22 @@ function renderStatusResults(data: any) {
             </h3>
             <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
                 ${details}
+            </div>
+        </div>` + copyButtonHtml();
+}
+
+function renderWebhookResults(data: any) {
+    const statusColor = data.success ? 'text-emerald-400' : 'text-rose-400';
+    resultsArea.innerHTML = `
+        <div class="pt-6 border-t border-white/10 mt-6 space-y-3">
+            <h3 class="text-white font-semibold flex items-center justify-between mb-4">
+                <span>Webhook: <span class="text-blue-300 text-sm font-mono truncate">${data.webhook_url}</span></span>
+                <span class="${statusColor} text-xs bg-white/5 px-2 py-1 rounded border border-white/10">${data.http_code}</span>
+            </h3>
+            <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Status: <span class="${statusColor}">${data.success ? 'Success' : 'Failed'}</span></div>
+                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Time: <span class="text-white">${data.total_time_ms}ms</span></div>
+                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400 col-span-2">Response: <span class="text-white text-xs">${data.response_body || '(empty)'}</span></div>
             </div>
         </div>` + copyButtonHtml();
 }
