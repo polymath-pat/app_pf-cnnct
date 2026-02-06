@@ -16,6 +16,8 @@ const presetsArea = document.getElementById('presets-area') as HTMLDivElement;
 let currentTab: 'port' | 'dns' | 'diag' | 'status' | 'webhook' = 'port';
 let testHistory: any[] = JSON.parse(localStorage.getItem('cnnct_history') || '[]');
 let lastResponse: any = null;
+let webhookPage = 0;
+const WEBHOOK_PAGE_SIZE = 10;
 
 const PRESETS: { label: string; value: string }[] = [
     { label: 'doompatrol.io', value: 'doompatrol.io' },
@@ -129,6 +131,7 @@ navWebhook.onclick = async () => {
     updateNav(navWebhook);
     probeForm.classList.add('hidden');
     renderPresets();
+    webhookPage = 0;
     await fetchWebhookResults();
 };
 
@@ -268,11 +271,16 @@ async function fetchWebhookResults() {
         const data = await response.json();
         lastResponse = data;
         renderWebhookResultsList(data);
+        attachPaginationHandlers();
         attachCopyHandler();
     } catch (err) {
         lastResponse = null;
         resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
     }
+}
+
+function formatTimestamp(ms: number): string {
+    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatRound(round: string): { label: string; color: string } {
@@ -296,33 +304,76 @@ function renderWebhookResultsList(data: any) {
         return;
     }
 
-    const items = data.results.slice(0, 10).map((r: any) => {
+    const totalPages = Math.ceil(data.results.length / WEBHOOK_PAGE_SIZE);
+    const start = webhookPage * WEBHOOK_PAGE_SIZE;
+    const pageResults = data.results.slice(start, start + WEBHOOK_PAGE_SIZE);
+
+    const items = pageResults.map((r: any) => {
         const time = new Date(r.timestamp).toLocaleString();
         const p = r.payload || {};
         const round = formatRound(p.round);
         const duration = p.seconds ? formatDuration(p.seconds) : '';
         const task = p.task || '';
-        const project = p.project || '';
+        const eventType = p.type || 'unknown';
+        const sessionStart = p.session_start ? formatTimestamp(p.session_start) : '-';
+        const sessionEnd = p.session_end ? formatTimestamp(p.session_end) : '-';
 
         return `
             <div class="bg-white/5 p-3 rounded-lg border border-white/5 mb-2">
                 <div class="flex justify-between text-[10px] mb-1">
-                    <span class="${round.color} font-bold uppercase">${round.label}</span>
+                    <div class="flex gap-2">
+                        <span class="${round.color} font-bold uppercase">${round.label}</span>
+                        <span class="text-purple-400 uppercase">${eventType}</span>
+                    </div>
                     <span class="text-slate-500">${time}</span>
                 </div>
                 <p class="text-white text-sm font-medium truncate">${task || '(no task)'}</p>
                 <div class="flex justify-between text-[10px] mt-1">
-                    <span class="text-slate-500">${project || 'No project'}</span>
+                    <span class="text-slate-500">${sessionStart} - ${sessionEnd}</span>
                     <span class="text-slate-400">${duration}</span>
                 </div>
             </div>`;
     }).join('');
 
+    const pagination = totalPages > 1 ? `
+        <div class="flex justify-between items-center mt-4 text-[10px]">
+            <button id="webhook-prev" class="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all ${webhookPage === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage === 0 ? 'disabled' : ''}>Prev</button>
+            <span class="text-slate-500">Page ${webhookPage + 1} of ${totalPages}</span>
+            <button id="webhook-next" class="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all ${webhookPage >= totalPages - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
+        </div>` : '';
+
     resultsArea.innerHTML = `
         <div class="pt-6 border-t border-white/10 mt-6">
             <h3 class="text-white font-semibold mb-4">Recent Sessions <span class="text-slate-500 text-xs">(${data.count} total)</span></h3>
             ${items}
+            ${pagination}
         </div>` + copyButtonHtml();
+}
+
+function attachPaginationHandlers() {
+    const prevBtn = document.getElementById('webhook-prev');
+    const nextBtn = document.getElementById('webhook-next');
+    if (prevBtn) {
+        prevBtn.onclick = () => {
+            if (webhookPage > 0) {
+                webhookPage--;
+                renderWebhookResultsList(lastResponse);
+                attachPaginationHandlers();
+                attachCopyHandler();
+            }
+        };
+    }
+    if (nextBtn) {
+        nextBtn.onclick = () => {
+            const totalPages = Math.ceil(lastResponse.results.length / WEBHOOK_PAGE_SIZE);
+            if (webhookPage < totalPages - 1) {
+                webhookPage++;
+                renderWebhookResultsList(lastResponse);
+                attachPaginationHandlers();
+                attachCopyHandler();
+            }
+        };
+    }
 }
 
 renderHistory();
