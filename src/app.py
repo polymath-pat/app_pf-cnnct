@@ -48,17 +48,29 @@ limiter = Limiter(
 def health_check():
     return jsonify({"status": "healthy"}), 200
 
+
+def _resolve_dns(domain: str) -> tuple[list[str], str | None]:
+    """Resolve DNS A records for a domain.
+
+    Returns:
+        Tuple of (list of IP addresses, error message or None)
+    """
+    try:
+        result = dns.resolver.resolve(domain, 'A')
+        return [ip.to_text() for ip in result], None
+    except Exception as e:
+        logger.error(f"DNS lookup failed for {domain}: {str(e)}")
+        return [], str(e)
+
+
 # Nginx proxies /api/dns/<domain> to /dns/<domain>
 @app.route('/dns/<domain>', methods=['GET'])
 @limiter.limit("10 per minute")
 def check_dns(domain):
-    try:
-        result = dns.resolver.resolve(domain, 'A')
-        ips = [ip.to_text() for ip in result]
-        return jsonify({"target": domain, "records": ips, "timestamp": time.time()})
-    except Exception as e:
-        logger.error(f"DNS lookup failed: {str(e)}")
-        return jsonify({"error": str(e)}), 400
+    records, error = _resolve_dns(domain)
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify({"target": domain, "records": records, "timestamp": time.time()})
 
 # Nginx proxies /api/cnnct to /cnnct
 @app.route('/cnnct', methods=['GET'])
@@ -116,41 +128,6 @@ def diagnose_url():
         logger.error(f"HTTP Diag failed for {url}: {str(e)}")
         return jsonify({"error": str(e)}), 400
 
-@app.route('/webhook', methods=['POST'])
-@limiter.limit("5 per minute")
-def send_webhook():
-    """Forward a test payload to a webhook URL."""
-    data = request.get_json() or {}
-    webhook_url = data.get('url')
-    payload = data.get('payload', {})
-
-    if not webhook_url:
-        return jsonify({"error": "No webhook URL specified"}), 400
-
-    if not webhook_url.startswith(('http://', 'https://')):
-        webhook_url = 'https://' + webhook_url
-
-    try:
-        start_time = time.perf_counter()
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            timeout=5,
-            headers={'Content-Type': 'application/json'}
-        )
-        total_time = time.perf_counter() - start_time
-
-        return jsonify({
-            "webhook_url": response.url,
-            "http_code": response.status_code,
-            "total_time_ms": round(total_time * 1000, 2),
-            "response_body": response.text[:500],  # Truncate for safety
-            "success": 200 <= response.status_code < 300
-        })
-    except Exception as e:
-        logger.error(f"Webhook failed for {webhook_url}: {str(e)}")
-        return jsonify({"error": str(e)}), 400
-
 
 def _store_webhook_result(result: dict):
     """Store a webhook result in Redis or memory fallback."""
@@ -195,19 +172,12 @@ def receive_webhook(secret):
         logger.warning(f"Invalid webhook secret attempt")
         return jsonify({"error": "Invalid secret"}), 403
 
-    # Parse incoming webhook payload
+    # Parse incoming webhook payload (Pomofocus format: type, round, task, seconds, etc.)
     payload = request.get_json() or {}
-    event_type = payload.get("event", "unknown")
+    event_type = payload.get("type") or payload.get("event") or "unknown"
 
     # Perform DNS lookup on configured target
-    dns_records = []
-    dns_error = None
-    try:
-        result = dns.resolver.resolve(webhook_dns_target, 'A')
-        dns_records = [ip.to_text() for ip in result]
-    except Exception as e:
-        dns_error = str(e)
-        logger.error(f"Webhook DNS lookup failed: {dns_error}")
+    dns_records, dns_error = _resolve_dns(webhook_dns_target)
 
     # Build result entry
     result_entry = {

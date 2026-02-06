@@ -6,6 +6,7 @@ const navPort = document.getElementById('nav-port');
 const navDns = document.getElementById('nav-dns');
 const navDiag = document.getElementById('nav-diag');
 const navStatus = document.getElementById('nav-status');
+const navWebhook = document.getElementById('nav-webhook');
 const sidebar = document.getElementById('history-sidebar');
 const historyList = document.getElementById('history-list');
 const toggleHistory = document.getElementById('toggle-history');
@@ -76,7 +77,7 @@ function renderPresets() {
 toggleHistory.onclick = () => sidebar.classList.remove('-translate-x-full');
 closeHistory.onclick = () => sidebar.classList.add('-translate-x-full');
 function updateNav(active) {
-    [navPort, navDns, navDiag, navStatus].forEach(btn => {
+    [navPort, navDns, navDiag, navStatus, navWebhook].forEach(btn => {
         btn.classList.remove('bg-white/10', 'text-blue-400');
         btn.classList.add('text-slate-400');
     });
@@ -110,6 +111,13 @@ navStatus.onclick = async () => {
     probeForm.classList.add('hidden');
     renderPresets();
     await fetchStatus();
+};
+navWebhook.onclick = async () => {
+    currentTab = 'webhook';
+    updateNav(navWebhook);
+    probeForm.classList.add('hidden');
+    renderPresets();
+    await fetchWebhookResults();
 };
 probeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -235,6 +243,47 @@ function renderStatusResults(data) {
             <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
                 ${details}
             </div>
+        </div>` + copyButtonHtml();
+}
+async function fetchWebhookResults() {
+    resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Loading webhook results...</div>`;
+    try {
+        const response = await fetch('/api/webhook-results');
+        if (!response.ok)
+            throw new Error(`Server returned ${response.status}`);
+        const data = await response.json();
+        lastResponse = data;
+        renderWebhookResultsList(data);
+        attachCopyHandler();
+    }
+    catch (err) {
+        lastResponse = null;
+        resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+    }
+}
+function renderWebhookResultsList(data) {
+    if (data.count === 0) {
+        resultsArea.innerHTML = `<div class="p-4 bg-white/5 text-slate-400 rounded-xl text-center">No webhook events received yet</div>`;
+        return;
+    }
+    const items = data.results.slice(0, 10).map((r) => {
+        const time = new Date(r.timestamp).toLocaleString();
+        const eventType = r.payload?.type || r.event_type || 'unknown';
+        const task = r.payload?.task || '';
+        return `
+            <div class="bg-white/5 p-3 rounded-lg border border-white/5 mb-2">
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span class="text-blue-400 font-bold uppercase">${eventType}</span>
+                    <span class="text-slate-500">${time}</span>
+                </div>
+                <p class="text-white text-sm font-mono truncate">${task || r.dns_target}</p>
+                <p class="text-emerald-400 text-xs font-mono">${r.dns_records?.join(', ') || 'No records'}</p>
+            </div>`;
+    }).join('');
+    resultsArea.innerHTML = `
+        <div class="pt-6 border-t border-white/10 mt-6">
+            <h3 class="text-white font-semibold mb-4">Recent Webhooks <span class="text-slate-500 text-xs">(${data.count} total)</span></h3>
+            ${items}
         </div>` + copyButtonHtml();
 }
 renderHistory();
