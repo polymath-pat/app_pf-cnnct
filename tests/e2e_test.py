@@ -83,6 +83,44 @@ def test_status_tab():
     finally:
         driver.quit()
 
+def test_webhook_tab():
+    driver = setup_driver()
+    try:
+        url = "http://localhost:3000"
+        print(f">>> Navigating to {url}")
+        driver.get(url)
+        time.sleep(2)
+
+        # Click the Webhook tab
+        webhook_btn = driver.find_element("id", "nav-webhook")
+        webhook_btn.click()
+        print(">>> Clicked Webhook tab")
+
+        # Wait for the webhook results to render
+        time.sleep(3)
+
+        # The probe form should be hidden
+        probe_form = driver.find_element("id", "probe-form")
+        assert "hidden" in probe_form.get_attribute("class"), "Probe form should be hidden on Webhook tab"
+
+        # The results area should contain webhook output (empty state or results)
+        results = driver.find_element("id", "results-area")
+        results_text = results.text
+        print(f">>> Webhook results: {results_text}")
+        assert "No webhook events" in results_text or "Recent Sessions" in results_text, "Webhook results should show empty state or sessions"
+        print("✅ E2E Test Passed: Webhook tab loaded and rendered results.")
+
+    except Exception as e:
+        screenshot_path = "tests/error-screenshot-webhook.png"
+        driver.save_screenshot(screenshot_path)
+        print(f"🔥 E2E Failure: {e}")
+        print(f"📸 Screenshot saved to {screenshot_path}")
+        raise
+    finally:
+        driver.quit()
+
+
 if __name__ == "__main__":
     test_frontend_loads()
     test_status_tab()
+    test_webhook_tab()

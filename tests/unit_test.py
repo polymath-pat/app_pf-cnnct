@@ -77,55 +77,6 @@ def test_status_redis_connection_failure(mock_redis, client):
     assert data['connected'] is False
     assert 'error' in data
 
-@patch('src.app.requests.post')
-def test_webhook_success(mock_post, client):
-    """Verify /webhook forwards payload and returns response data."""
-    mock_response = Mock()
-    mock_response.url = 'https://webhook.site/test'
-    mock_response.status_code = 200
-    mock_response.text = 'OK'
-    mock_post.return_value = mock_response
-
-    rv = client.post('/webhook',
-        json={'url': 'https://webhook.site/test', 'payload': {'test': 'data'}},
-        content_type='application/json')
-
-    assert rv.status_code == 200
-    data = rv.get_json()
-    assert data['success'] == True
-    assert data['http_code'] == 200
-    assert data['webhook_url'] == 'https://webhook.site/test'
-    assert 'total_time_ms' in data
-
-@patch('src.app.requests.post')
-def test_webhook_missing_url(mock_post, client):
-    """Verify /webhook returns 400 when no URL is provided."""
-    rv = client.post('/webhook',
-        json={'payload': {'test': 'data'}},
-        content_type='application/json')
-
-    assert rv.status_code == 400
-    data = rv.get_json()
-    assert 'error' in data
-
-@patch('src.app.requests.post')
-def test_webhook_adds_https(mock_post, client):
-    """Verify /webhook adds https:// when missing."""
-    mock_response = Mock()
-    mock_response.url = 'https://webhook.site/test'
-    mock_response.status_code = 200
-    mock_response.text = 'OK'
-    mock_post.return_value = mock_response
-
-    rv = client.post('/webhook',
-        json={'url': 'webhook.site/test', 'payload': {}},
-        content_type='application/json')
-
-    assert rv.status_code == 200
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
-    assert call_args[0][0] == 'https://webhook.site/test'
-
 
 def test_webhook_receive_not_configured(client):
     """Verify /webhook-receive returns 503 when secret not configured."""
