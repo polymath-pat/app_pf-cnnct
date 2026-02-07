@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Backend image tag (defaults to latest main SHA)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Pulumi Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest main SHA
+        id: get-sha
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "sha=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "sha=$(git rev-parse origin/main)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Pulumi CLI
+        run: curl -fsSL https://get.pulumi.com | sh
+
+      - name: Pulumi Deploy
+        run: |
+          export PATH=$PATH:$HOME/.pulumi/bin
+          pulumi login s3://doap-cnnct?endpoint=sfo3.digitaloceanspaces.com
+          pulumi install
+
+          # Deploy the 'prod' stack
+          pulumi up --stack prod --yes --non-interactive
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          PULUMI_S3_ENDPOINT: https://sfo3.digitaloceanspaces.com
+          PULUMI_S3_REGION: sfo3
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
+          GITHUB_SHA: ${{ steps.get-sha.outputs.sha }}
+          AWS_REGION: us-east-1
