@@ -12,16 +12,39 @@ services:
       - ./src:/app
     environment:
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cnnct:cnnct_dev_password@postgres:5432/cnnct_dev
       - HOST=0.0.0.0
       - PORT=8080
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - cnnct-network
 
   redis:
     image: redis:7-alpine
     container_name: cnnct-redis
+    networks:
+      - cnnct-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cnnct-postgres
+    environment:
+      POSTGRES_USER: cnnct
+      POSTGRES_PASSWORD: cnnct_dev_password
+      POSTGRES_DB: cnnct_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnnct -d cnnct_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - cnnct-network
 
@@ -42,3 +65,6 @@ services:
 networks:
   cnnct-network:
     driver: bridge
+
+volumes:
+  postgres_data:

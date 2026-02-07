@@ -2,12 +2,20 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 from src.app import app
 import requests_mock
+from datetime import datetime, timezone
 
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
+
+
+@pytest.fixture
+def mock_db_session():
+    """Create a mock database session for testing."""
+    session = MagicMock()
+    return session
 
 def test_health_check(client):
     """Verify the healthz endpoint is alive."""
@@ -152,3 +160,109 @@ def test_webhook_results_empty(client):
     data = rv.get_json()
     assert data['count'] == 0
     assert data['results'] == []
+
+
+def test_db_status_no_database_url(client):
+    """Verify /db-status returns 'none' when no DATABASE_URL is configured."""
+    rv = client.get('/db-status')
+    data = rv.get_json()
+
+    assert rv.status_code == 200
+    assert data['backend'] == 'none'
+    assert data['connected'] is False
+    assert 'No DATABASE_URL configured' in data['message']
+
+
+@patch('src.app.database_url', 'postgresql://test:test@localhost:5432/test')
+@patch('src.app._use_postgres', False)
+def test_db_status_init_failed(client):
+    """Verify /db-status returns 503 when PostgreSQL init failed."""
+    rv = client.get('/db-status')
+    data = rv.get_json()
+
+    assert rv.status_code == 503
+    assert data['backend'] == 'postgres'
+    assert data['connected'] is False
+    assert 'initialization failed' in data['message']
+
+
+@patch('src.app.database_url', 'postgresql://test:test@localhost:5432/test')
+@patch('src.app._use_postgres', True)
+@patch('src.app.get_db_session')
+def test_db_status_connected(mock_get_session, client):
+    """Verify /db-status returns PostgreSQL info when connected."""
+    mock_session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = 'PostgreSQL 16.1'
+    mock_session.execute.return_value = mock_result
+    mock_session.query.return_value.count.return_value = 5
+
+    mock_get_session.return_value.__enter__ = Mock(return_value=mock_session)
+    mock_get_session.return_value.__exit__ = Mock(return_value=False)
+
+    rv = client.get('/db-status')
+    data = rv.get_json()
+
+    assert rv.status_code == 200
+    assert data['backend'] == 'postgres'
+    assert data['connected'] is True
+    assert data['version'] == 'PostgreSQL 16.1'
+    assert data['webhook_events_count'] == 5
+    assert 'latency_ms' in data
+
+
+@patch('src.app._use_postgres', True)
+@patch('src.app._db_session_factory')
+def test_store_webhook_postgres(mock_factory, client):
+    """Verify webhook results are stored in PostgreSQL when available."""
+    import src.app
+    mock_session = MagicMock()
+    mock_factory.return_value = mock_session
+
+    result = {
+        "timestamp": "2024-01-15T10:30:00Z",
+        "event_type": "test",
+        "source_ip": "127.0.0.1",
+        "dns_target": "example.com",
+        "dns_records": ["93.184.216.34"],
+        "dns_error": None,
+        "payload": {"event": "test"}
+    }
+
+    src.app._store_webhook_result(result)
+
+    # Verify session.add was called with a WebhookEvent
+    assert mock_session.add.called
+
+
+@patch('src.app._use_postgres', True)
+@patch('src.app._db_session_factory')
+def test_get_webhook_results_postgres(mock_factory, client):
+    """Verify webhook results are retrieved from PostgreSQL when available."""
+    import src.app
+    from src.models import WebhookEvent
+    import uuid
+
+    mock_session = MagicMock()
+    mock_factory.return_value = mock_session
+
+    # Create mock webhook event
+    mock_event = MagicMock(spec=WebhookEvent)
+    mock_event.id = uuid.uuid4()
+    mock_event.timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+    mock_event.event_type = "test"
+    mock_event.source_ip = "127.0.0.1"
+    mock_event.dns_target = "example.com"
+    mock_event.dns_records = ["93.184.216.34"]
+    mock_event.dns_error = None
+    mock_event.payload = {"event": "test"}
+
+    mock_query = MagicMock()
+    mock_query.order_by.return_value.limit.return_value.all.return_value = [mock_event]
+    mock_session.query.return_value = mock_query
+
+    results = src.app._get_webhook_results()
+
+    assert len(results) == 1
+    assert results[0]['event_type'] == 'test'
+    assert results[0]['source_ip'] == '127.0.0.1'

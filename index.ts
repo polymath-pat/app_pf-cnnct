@@ -7,10 +7,19 @@ const imageSha = process.env.GITHUB_SHA || "latest";
 const region = digitalocean.Region.SFO3;
 const registryName = "kadet-cantu";
 
-// --- Database: Managed Valkey (Redis) ---
-const db = new digitalocean.DatabaseCluster("cnnct-valkey", {
+// --- Database: Managed Valkey (Redis) for rate limiting ---
+const valkey = new digitalocean.DatabaseCluster("cnnct-valkey", {
     engine: "valkey",
     version: "8",
+    size: "db-s-1vcpu-1gb",
+    region: region,
+    nodeCount: 1,
+});
+
+// --- Database: Managed PostgreSQL for webhook storage ---
+const postgres = new digitalocean.DatabaseCluster("cnnct-postgres", {
+    engine: "pg",
+    version: "16",
     size: "db-s-1vcpu-1gb",
     region: region,
     nodeCount: 1,
@@ -42,7 +51,12 @@ const app = new digitalocean.App("cnnct-app", {
             envs: [
                 {
                     key: "REDIS_URL",
-                    value: db.uri,
+                    value: valkey.uri,
+                    type: "SECRET",
+                },
+                {
+                    key: "DATABASE_URL",
+                    value: postgres.uri,
                     type: "SECRET",
                 },
                 { key: "HOST", value: "0.0.0.0" },
@@ -106,4 +120,5 @@ const cname = new digitalocean.DnsRecord("cnnct-dns", {
 // --- Outputs ---
 export const appUrl = app.liveUrl;
 export const customDomain = "cnnct.metaciety.net";
-export const dbHost = db.host;
+export const valkeyHost = valkey.host;
+export const postgresHost = postgres.host;

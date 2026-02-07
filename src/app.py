@@ -12,6 +12,13 @@ from datetime import datetime, timezone
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
+from contextlib import contextmanager
+from flask_migrate import Migrate
+
+try:
+    from models import Base, WebhookEvent, get_engine, get_session_factory
+except ImportError:
+    from src.models import Base, WebhookEvent, get_engine, get_session_factory
 
 # Configure Logging
 logging.basicConfig(
@@ -24,16 +31,24 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
 
+# Initialize Flask-Migrate
+migrate = Migrate()
+
 # Configure Rate Limiting
 redis_url = os.environ.get("REDIS_URL", "memory://")
+
+# Database configuration
+database_url = os.environ.get("DATABASE_URL", "")
+_db_engine = None
+_db_session_factory = None
+_use_postgres = False
 
 # Webhook receiver configuration
 webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
 webhook_dns_target = os.environ.get("WEBHOOK_DNS_TARGET", "example.com")
 
-# In-memory fallback for webhook results when Redis is unavailable
+# In-memory fallback for webhook results when PostgreSQL is unavailable
 _webhook_results_memory: list = []
-WEBHOOK_RESULTS_KEY = "cnnct:webhook_results"
 WEBHOOK_RESULTS_MAX = 50
 limiter = Limiter(
     get_remote_address,
@@ -42,6 +57,42 @@ limiter = Limiter(
     default_limits=["100 per hour", "20 per minute"],
     strategy="fixed-window",
 )
+
+
+def init_database():
+    """Initialize PostgreSQL database connection if configured."""
+    global _db_engine, _db_session_factory, _use_postgres
+    if database_url:
+        try:
+            _db_engine = get_engine(database_url)
+            _db_session_factory = get_session_factory(_db_engine)
+            # Initialize Flask-Migrate with the app and Base metadata
+            migrate.init_app(app, _db_engine, directory='migrations')
+            _use_postgres = True
+            logger.info("PostgreSQL database initialized")
+        except Exception as e:
+            logger.warning(f"PostgreSQL init failed, falling back to Redis/memory: {e}")
+
+
+@contextmanager
+def get_db_session():
+    """Get a database session with automatic commit/rollback."""
+    if not _use_postgres or not _db_session_factory:
+        yield None
+        return
+    session = _db_session_factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+# Initialize database at module load
+init_database()
 
 @app.route('/healthz')
 @limiter.exempt
@@ -130,18 +181,28 @@ def diagnose_url():
 
 
 def _store_webhook_result(result: dict):
-    """Store a webhook result in Redis or memory fallback."""
+    """Store a webhook result in PostgreSQL or memory fallback."""
     global _webhook_results_memory
-    result_json = json.dumps(result)
 
-    if redis_url != "memory://":
+    # Try PostgreSQL first
+    if _use_postgres:
         try:
-            r = redis.from_url(redis_url, socket_connect_timeout=3)
-            r.lpush(WEBHOOK_RESULTS_KEY, result_json)
-            r.ltrim(WEBHOOK_RESULTS_KEY, 0, WEBHOOK_RESULTS_MAX - 1)
-            return
+            with get_db_session() as session:
+                if session:
+                    event = WebhookEvent(
+                        timestamp=datetime.fromisoformat(result["timestamp"].replace("Z", "+00:00")),
+                        event_type=result["event_type"],
+                        source_ip=result["source_ip"],
+                        dns_target=result["dns_target"],
+                        dns_records=result["dns_records"],
+                        dns_error=result["dns_error"],
+                        payload=result["payload"]
+                    )
+                    session.add(event)
+                    logger.info("Webhook stored in PostgreSQL")
+                    return
         except Exception as e:
-            logger.warning(f"Redis store failed, using memory: {e}")
+            logger.warning(f"PostgreSQL store failed, using memory: {e}")
 
     # Memory fallback
     _webhook_results_memory.insert(0, result)
@@ -149,14 +210,31 @@ def _store_webhook_result(result: dict):
 
 
 def _get_webhook_results() -> list:
-    """Retrieve webhook results from Redis or memory fallback."""
-    if redis_url != "memory://":
+    """Retrieve webhook results from PostgreSQL or memory fallback."""
+    # Try PostgreSQL first
+    if _use_postgres:
         try:
-            r = redis.from_url(redis_url, socket_connect_timeout=3)
-            results = r.lrange(WEBHOOK_RESULTS_KEY, 0, WEBHOOK_RESULTS_MAX - 1)
-            return [json.loads(r) for r in results]
+            with get_db_session() as session:
+                if session:
+                    events = session.query(WebhookEvent)\
+                        .order_by(WebhookEvent.timestamp.desc())\
+                        .limit(WEBHOOK_RESULTS_MAX)\
+                        .all()
+                    return [
+                        {
+                            "id": str(e.id),
+                            "timestamp": e.timestamp.isoformat().replace("+00:00", "Z"),
+                            "event_type": e.event_type,
+                            "source_ip": e.source_ip,
+                            "dns_target": e.dns_target,
+                            "dns_records": e.dns_records or [],
+                            "dns_error": e.dns_error,
+                            "payload": e.payload or {}
+                        }
+                        for e in events
+                    ]
         except Exception as e:
-            logger.warning(f"Redis fetch failed, using memory: {e}")
+            logger.warning(f"PostgreSQL fetch failed, using memory: {e}")
 
     return _webhook_results_memory
 
@@ -244,6 +322,53 @@ def redis_status():
             "connected": False,
             "error": str(e)
         }), 503
+
+
+@app.route('/db-status', methods=['GET'])
+@limiter.limit("5 per minute")
+def db_status():
+    """Check PostgreSQL database connection status."""
+    if not database_url:
+        return jsonify({
+            "backend": "none",
+            "connected": False,
+            "message": "No DATABASE_URL configured"
+        })
+
+    if not _use_postgres:
+        return jsonify({
+            "backend": "postgres",
+            "connected": False,
+            "message": "PostgreSQL initialization failed"
+        }), 503
+
+    try:
+        from sqlalchemy import text
+        start_time = time.perf_counter()
+        with get_db_session() as session:
+            if session:
+                result = session.execute(text("SELECT version()"))
+                version = result.scalar()
+                latency = (time.perf_counter() - start_time) * 1000
+
+                # Get webhook event count
+                event_count = session.query(WebhookEvent).count()
+
+                return jsonify({
+                    "backend": "postgres",
+                    "connected": True,
+                    "latency_ms": round(latency, 2),
+                    "version": version,
+                    "webhook_events_count": event_count
+                })
+    except Exception as e:
+        logger.error(f"PostgreSQL status check failed: {str(e)}")
+        return jsonify({
+            "backend": "postgres",
+            "connected": False,
+            "error": str(e)
+        }), 503
+
 
 if __name__ == "__main__":
     # Bandit B104: binding to 0.0.0.0 is required for container networking
