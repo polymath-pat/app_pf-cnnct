@@ -7,7 +7,7 @@ import time
 import json
 import dns.resolver  # Requires dnspython in requirements.txt
 import redis
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from datetime import datetime, timezone
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -288,6 +288,56 @@ def get_webhook_results():
         "count": len(results),
         "results": results
     })
+
+
+@app.route('/webhook-results/rss', methods=['GET'])
+@limiter.limit("10 per minute")
+def get_webhook_results_rss():
+    """Retrieve stored webhook results as RSS feed."""
+    results = _get_webhook_results()
+
+    # Build RSS 2.0 XML
+    base_url = request.url_root.rstrip('/')
+    items_xml = ""
+    for r in results[:20]:  # Limit to 20 items for RSS
+        payload = r.get("payload", {})
+        task = payload.get("task", "(no task)")
+        round_type = payload.get("round", "unknown")
+        event_type = r.get("event_type", "unknown")
+        timestamp = r.get("timestamp", "")
+
+        # Format pub date for RSS (RFC 822)
+        try:
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            pub_date = dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
+        except (ValueError, AttributeError):
+            pub_date = timestamp
+
+        title = f"{round_type.replace('_', ' ').title()}: {task}"
+        description = f"Event: {event_type}, Round: {round_type}"
+        if payload.get("seconds"):
+            description += f", Duration: {payload['seconds'] // 60}m"
+
+        items_xml += f"""
+        <item>
+            <title><![CDATA[{title}]]></title>
+            <description><![CDATA[{description}]]></description>
+            <pubDate>{pub_date}</pubDate>
+            <guid isPermaLink="false">{r.get('id', timestamp)}</guid>
+        </item>"""
+
+    rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+    <channel>
+        <title>CNNCT Webhook Events</title>
+        <link>{base_url}</link>
+        <description>Recent webhook events received by CNNCT</description>
+        <lastBuildDate>{datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")}</lastBuildDate>
+        {items_xml}
+    </channel>
+</rss>"""
+
+    return Response(rss_xml, mimetype='application/rss+xml')
 
 
 @app.route('/status', methods=['GET'])

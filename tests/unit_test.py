@@ -266,3 +266,28 @@ def test_get_webhook_results_postgres(mock_factory, client):
     assert len(results) == 1
     assert results[0]['event_type'] == 'test'
     assert results[0]['source_ip'] == '127.0.0.1'
+
+
+def test_webhook_results_rss(client):
+    """Verify /webhook-results/rss returns valid RSS XML."""
+    import src.app
+    src.app._webhook_results_memory = [{
+        "id": "test-123",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "event_type": "timer_complete",
+        "source_ip": "127.0.0.1",
+        "dns_target": "example.com",
+        "dns_records": [],
+        "dns_error": None,
+        "payload": {"task": "Test task", "round": "pomodoro", "seconds": 1500}
+    }]
+
+    rv = client.get('/webhook-results/rss')
+
+    assert rv.status_code == 200
+    assert rv.content_type == 'application/rss+xml; charset=utf-8'
+    data = rv.data.decode('utf-8')
+    assert '<?xml version="1.0"' in data
+    assert '<rss version="2.0">' in data
+    assert '<title>CNNCT Webhook Events</title>' in data
+    assert 'Pomodoro: Test task' in data
