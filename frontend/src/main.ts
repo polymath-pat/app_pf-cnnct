@@ -1,3 +1,5 @@
+import './main.css';
+
 const probeForm = document.getElementById('probe-form') as HTMLFormElement;
 const targetInput = document.getElementById('target-input') as HTMLInputElement;
 const resultsArea = document.getElementById('results-area') as HTMLDivElement;
