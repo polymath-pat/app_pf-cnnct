@@ -18,6 +18,8 @@ let testHistory: any[] = JSON.parse(localStorage.getItem('cnnct_history') || '[]
 let lastResponse: any = null;
 let webhookPage = 0;
 const WEBHOOK_PAGE_SIZE = 10;
+let webhookPollInterval: number | null = null;
+const WEBHOOK_POLL_MS = 15000; // Poll every 15 seconds
 
 const PRESETS: { label: string; value: string }[] = [
     { label: 'doompatrol.io', value: 'doompatrol.io' },
@@ -66,7 +68,7 @@ function attachCopyHandler() {
 }
 
 function renderPresets() {
-    if (currentTab === 'status') {
+    if (currentTab === 'status' || currentTab === 'webhook') {
         presetsArea.innerHTML = '';
         return;
     }
@@ -94,7 +96,24 @@ function updateNav(active: HTMLButtonElement) {
     active.classList.remove('text-slate-400');
 }
 
+function stopWebhookPolling() {
+    if (webhookPollInterval !== null) {
+        clearInterval(webhookPollInterval);
+        webhookPollInterval = null;
+    }
+}
+
+function startWebhookPolling() {
+    stopWebhookPolling();
+    webhookPollInterval = window.setInterval(async () => {
+        if (currentTab === 'webhook') {
+            await fetchWebhookResults(true); // silent refresh
+        }
+    }, WEBHOOK_POLL_MS);
+}
+
 navPort.onclick = () => {
+    stopWebhookPolling();
     currentTab = 'port';
     updateNav(navPort);
     targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
@@ -103,6 +122,7 @@ navPort.onclick = () => {
 };
 
 navDns.onclick = () => {
+    stopWebhookPolling();
     currentTab = 'dns';
     updateNav(navDns);
     targetInput.placeholder = "Enter Domain for DNS lookup...";
@@ -111,6 +131,7 @@ navDns.onclick = () => {
 };
 
 navDiag.onclick = () => {
+    stopWebhookPolling();
     currentTab = 'diag';
     updateNav(navDiag);
     targetInput.placeholder = "Enter URL (e.g. https://google.com)";
@@ -119,6 +140,7 @@ navDiag.onclick = () => {
 };
 
 navStatus.onclick = async () => {
+    stopWebhookPolling();
     currentTab = 'status';
     updateNav(navStatus);
     probeForm.classList.add('hidden');
@@ -133,6 +155,7 @@ navWebhook.onclick = async () => {
     renderPresets();
     webhookPage = 0;
     await fetchWebhookResults();
+    startWebhookPolling();
 };
 
 probeForm.addEventListener('submit', async (e: Event) => {
@@ -263,19 +286,31 @@ function renderStatusResults(data: any) {
         </div>` + copyButtonHtml();
 }
 
-async function fetchWebhookResults() {
-    resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Loading webhook results...</div>`;
+async function fetchWebhookResults(silent: boolean = false) {
+    if (!silent) {
+        resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Loading webhook results...</div>`;
+    }
     try {
         const response = await fetch('/api/webhook-results');
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
         const data = await response.json();
-        lastResponse = data;
-        renderWebhookResultsList(data);
-        attachPaginationHandlers();
-        attachCopyHandler();
+
+        // Check if we have new data (compare counts or first item)
+        const hasNewData = !lastResponse ||
+            data.count !== lastResponse.count ||
+            (data.results[0]?.id !== lastResponse.results?.[0]?.id);
+
+        if (hasNewData || !silent) {
+            lastResponse = data;
+            renderWebhookResultsList(data);
+            attachPaginationHandlers();
+            attachCopyHandler();
+        }
     } catch (err) {
-        lastResponse = null;
-        resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        if (!silent) {
+            lastResponse = null;
+            resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        }
     }
 }
 
@@ -342,9 +377,25 @@ function renderWebhookResultsList(data: any) {
             <button id="webhook-next" class="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all ${webhookPage >= totalPages - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
         </div>` : '';
 
+    const liveIndicator = `<span class="flex items-center gap-1 text-[10px] text-emerald-400">
+        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+        LIVE
+    </span>`;
+
+    const rssLink = `<a href="/api/webhook-results/rss" target="_blank" class="text-orange-400 hover:text-orange-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1" title="Subscribe to RSS feed">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.18 15.64a2.18 2.18 0 1 1 0 4.36 2.18 2.18 0 0 1 0-4.36m12.64 4.36A14.82 14.82 0 0 0 4 5.18V8.3a11.7 11.7 0 0 1 11.7 11.7h3.12m-6.24 0A8.58 8.58 0 0 0 4 11.42v3.12a5.46 5.46 0 0 1 5.46 5.46h3.12z"/></svg>
+        RSS
+    </a>`;
+
     resultsArea.innerHTML = `
         <div class="pt-6 border-t border-white/10 mt-6">
-            <h3 class="text-white font-semibold mb-4">Recent Sessions <span class="text-slate-500 text-xs">(${data.count} total)</span></h3>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-white font-semibold flex items-center gap-2">
+                    Recent Sessions <span class="text-slate-500 text-xs">(${data.count} total)</span>
+                    ${liveIndicator}
+                </h3>
+                ${rssLink}
+            </div>
             ${items}
             ${pagination}
         </div>` + copyButtonHtml();
