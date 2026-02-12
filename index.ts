@@ -133,17 +133,28 @@ const cname = new digitalocean.DnsRecord("cnnct-dns", {
 });
 
 // --- Log Forwarding: Database → OpenSearch ---
+// The opensearchUrl contains embedded credentials with special characters that
+// break Go's url.Parse (used by the provider's validator). We must URL-encode
+// the password portion so the provider accepts it without leaking credentials
+// in validation errors.
 if (config.get("opensearchUrl")) {
+    const safeEndpoint = config.requireSecret("opensearchUrl").apply(raw => {
+        const match = raw.match(/^(https?:\/\/)([^:]+):(.+)@(.+)$/);
+        if (!match) return raw;
+        const [, scheme, user, pass, hostPort] = match;
+        return `${scheme}${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${hostPort}`;
+    });
+
     new digitalocean.DatabaseLogsinkOpensearch("pg-logsink-opensearch", {
         clusterId: postgres.id,
-        endpoint: config.requireSecret("opensearchUrl"),
+        endpoint: safeEndpoint,
         indexPrefix: "pg-logs",
         indexDaysMax: 30,
     });
 
     new digitalocean.DatabaseLogsinkOpensearch("valkey-logsink-opensearch", {
         clusterId: valkey.id,
-        endpoint: config.requireSecret("opensearchUrl"),
+        endpoint: safeEndpoint,
         indexPrefix: "valkey-logs",
         indexDaysMax: 30,
     });
