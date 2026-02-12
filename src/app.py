@@ -54,8 +54,13 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri=redis_url,
+    storage_options={
+        "socket_connect_timeout": 5,
+        "socket_timeout": 5,
+    },
     default_limits=["100 per hour", "20 per minute"],
     strategy="fixed-window",
+    in_memory_fallback_enabled=True,
 )
 
 
@@ -352,7 +357,7 @@ def redis_status():
 
     try:
         start_time = time.perf_counter()
-        r = redis.from_url(redis_url, socket_connect_timeout=3)
+        r = redis.from_url(redis_url, socket_connect_timeout=5, socket_timeout=5)
         info = r.info(section="server")
         latency = (time.perf_counter() - start_time) * 1000
 
