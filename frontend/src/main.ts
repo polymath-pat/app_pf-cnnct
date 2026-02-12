@@ -114,6 +114,13 @@ function startWebhookPolling() {
     }, WEBHOOK_POLL_MS);
 }
 
+function updateUrl(tab?: string, target?: string) {
+    const params = new URLSearchParams();
+    params.set('tab', tab || currentTab);
+    if (target) params.set('target', target);
+    history.replaceState(null, '', '?' + params.toString());
+}
+
 navPort.onclick = () => {
     stopWebhookPolling();
     currentTab = 'port';
@@ -121,6 +128,7 @@ navPort.onclick = () => {
     targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
     probeForm.classList.remove('hidden');
     renderPresets();
+    updateUrl('port');
 };
 
 navDns.onclick = () => {
@@ -130,6 +138,7 @@ navDns.onclick = () => {
     targetInput.placeholder = "Enter Domain for DNS lookup...";
     probeForm.classList.remove('hidden');
     renderPresets();
+    updateUrl('dns');
 };
 
 navDiag.onclick = () => {
@@ -139,6 +148,7 @@ navDiag.onclick = () => {
     targetInput.placeholder = "Enter URL (e.g. https://google.com)";
     probeForm.classList.remove('hidden');
     renderPresets();
+    updateUrl('diag');
 };
 
 navStatus.onclick = async () => {
@@ -147,6 +157,7 @@ navStatus.onclick = async () => {
     updateNav(navStatus);
     probeForm.classList.add('hidden');
     renderPresets();
+    updateUrl('status');
     await fetchStatus();
 };
 
@@ -155,6 +166,7 @@ navWebhook.onclick = async () => {
     updateNav(navWebhook);
     probeForm.classList.add('hidden');
     renderPresets();
+    updateUrl('webhook');
     webhookPage = 0;
     await fetchWebhookResults();
     startWebhookPolling();
@@ -179,6 +191,8 @@ probeForm.addEventListener('submit', async (e: Event) => {
 
         const data = await response.json();
         lastResponse = data;
+
+        updateUrl(currentTab, target);
 
         if (currentTab === 'port') {
             renderPortResults(data);
@@ -356,6 +370,23 @@ function renderWebhookResultsList(data: any) {
         const sessionStart = p.session_start ? formatTimestamp(p.session_start) : '-';
         const sessionEnd = p.session_end ? formatTimestamp(p.session_end) : '-';
 
+        let testLine = '';
+        if (p.test_type && p.test_result && !p.test_result.error) {
+            const tr = p.test_result;
+            if (p.test_type === 'port_check') {
+                const status = tr.tcp_443 ? 'OPEN' : 'CLOSED';
+                const color = tr.tcp_443 ? 'text-emerald-400' : 'text-rose-400';
+                const latency = tr.latency_ms ? ` (${tr.latency_ms}ms)` : '';
+                testLine = `<span class="${color}">Port 443: ${status}${latency}</span>`;
+            } else if (p.test_type === 'dns_lookup') {
+                const count = tr.records?.length ?? 0;
+                testLine = `<span class="text-emerald-400">DNS: ${count} A record${count !== 1 ? 's' : ''}</span>`;
+            } else if (p.test_type === 'http_diag') {
+                const latency = tr.total_time_ms ? ` (${tr.total_time_ms}ms)` : '';
+                testLine = `<span class="text-emerald-400">HTTP ${tr.http_code}${latency}</span>`;
+            }
+        }
+
         return `
             <div class="bg-white/5 p-3 rounded-lg border border-white/5 mb-2">
                 <div class="flex justify-between text-[10px] mb-1">
@@ -366,6 +397,7 @@ function renderWebhookResultsList(data: any) {
                     <span class="text-slate-500">${time}</span>
                 </div>
                 <p class="text-white text-sm font-medium truncate">${task || '(no task)'}</p>
+                ${testLine ? `<p class="text-[10px] mt-1">${testLine}</p>` : ''}
                 <div class="flex justify-between text-[10px] mt-1">
                     <span class="text-slate-500">${sessionStart} - ${sessionEnd}</span>
                     <span class="text-slate-400">${duration}</span>
@@ -432,3 +464,44 @@ function attachPaginationHandlers() {
 
 renderHistory();
 renderPresets();
+
+function initFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const target = params.get('target');
+
+    if (!tab) return;
+
+    const tabNav: Record<string, HTMLButtonElement> = {
+        port: navPort,
+        dns: navDns,
+        diag: navDiag,
+        status: navStatus,
+        webhook: navWebhook,
+    };
+
+    const btn = tabNav[tab];
+    if (!btn) return;
+
+    if (tab === 'status' || tab === 'webhook') {
+        btn.click();
+        return;
+    }
+
+    // For form-based tabs, switch tab without submitting, then fill + submit
+    currentTab = tab as typeof currentTab;
+    updateNav(btn);
+    probeForm.classList.remove('hidden');
+    renderPresets();
+
+    if (tab === 'port') targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
+    else if (tab === 'dns') targetInput.placeholder = "Enter Domain for DNS lookup...";
+    else if (tab === 'diag') targetInput.placeholder = "Enter URL (e.g. https://google.com)";
+
+    if (target) {
+        targetInput.value = target;
+        probeForm.requestSubmit();
+    }
+}
+
+initFromUrl();
