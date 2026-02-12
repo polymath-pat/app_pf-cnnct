@@ -87,7 +87,7 @@ const app = new digitalocean.App("cnnct-app", {
             github: {
                 repo: "polymath-pat/doap-cnnct",
                 branch: "main",
-                deployOnPush: true,
+                deployOnPush: false,
             },
             sourceDir: "/frontend",
             buildCommand: "npm install && npm run build",
