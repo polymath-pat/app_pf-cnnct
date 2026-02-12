@@ -12,8 +12,11 @@ class OpenSearchHandler(logging.Handler):
     Parses OPENSEARCH_URL (https://user:pass@host:port) for connection details.
     Handles passwords with special characters that break standard urlparse.
     Uses a background thread to flush buffered records every `flush_interval`
-    seconds or when the buffer reaches `buffer_size` records.
+    seconds. Records are never flushed synchronously in emit() to avoid
+    blocking the calling thread if OpenSearch is slow or unreachable.
     """
+
+    MAX_BUFFER_SIZE = 1000
 
     def __init__(self, opensearch_url, buffer_size=10, flush_interval=5.0,
                  index_prefix="cnnct-logs"):
@@ -59,9 +62,8 @@ class OpenSearchHandler(logging.Handler):
                 "message": self.format(record),
             }
             with self._lock:
-                self._buffer.append(doc)
-                if len(self._buffer) >= self._buffer_size:
-                    self._flush_locked()
+                if len(self._buffer) < self.MAX_BUFFER_SIZE:
+                    self._buffer.append(doc)
         except Exception:
             self.handleError(record)
 
