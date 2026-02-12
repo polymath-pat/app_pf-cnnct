@@ -66,6 +66,9 @@ class OpenSearchHandler(logging.Handler):
                 "logger": record.name,
                 "message": self.format(record),
             }
+            extra = getattr(record, "extra_fields", None)
+            if extra and isinstance(extra, dict):
+                doc.update(extra)
             with self._lock:
                 if len(self._buffer) < self.MAX_BUFFER_SIZE:
                     self._buffer.append(doc)
