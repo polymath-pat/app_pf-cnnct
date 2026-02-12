@@ -7,7 +7,7 @@ import requests
 
 logger = logging.getLogger("cnnct.timer")
 
-LOCK_PATH = "/tmp/cnnct-webhook-timer.lock"
+LOCK_PATH = "/tmp/cnnct-webhook-timer.lock"  # nosec B108 - lock file only, no sensitive data
 
 
 class WebhookTimer:
@@ -63,5 +63,5 @@ class WebhookTimer:
             try:
                 fcntl.flock(self._lock_file, fcntl.LOCK_UN)
                 self._lock_file.close()
-            except Exception:
+            except Exception:  # nosec B110 - best-effort cleanup during shutdown
                 pass
