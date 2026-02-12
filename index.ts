@@ -132,12 +132,19 @@ const cname = new digitalocean.DnsRecord("cnnct-dns", {
     ttl: 1800,
 });
 
-// --- Log Forwarding: PostgreSQL → OpenSearch ---
+// --- Log Forwarding: Database → OpenSearch ---
 if (config.get("opensearchUrl")) {
     new digitalocean.DatabaseLogsinkOpensearch("pg-logsink-opensearch", {
         clusterId: postgres.id,
         endpoint: config.requireSecret("opensearchUrl"),
         indexPrefix: "pg-logs",
+        indexDaysMax: 30,
+    });
+
+    new digitalocean.DatabaseLogsinkOpensearch("valkey-logsink-opensearch", {
+        clusterId: valkey.id,
+        endpoint: config.requireSecret("opensearchUrl"),
+        indexPrefix: "valkey-logs",
         indexDaysMax: 30,
     });
 }
