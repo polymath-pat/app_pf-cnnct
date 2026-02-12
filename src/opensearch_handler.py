@@ -15,13 +15,15 @@ class OpenSearchHandler(logging.Handler):
     seconds or when the buffer reaches `buffer_size` records.
     """
 
-    def __init__(self, opensearch_url, buffer_size=10, flush_interval=5.0):
+    def __init__(self, opensearch_url, buffer_size=10, flush_interval=5.0,
+                 index_prefix="cnnct-logs"):
         super().__init__()
         self._client = None
         self._buffer = []
         self._lock = threading.Lock()
         self._buffer_size = buffer_size
         self._flush_interval = flush_interval
+        self._index_prefix = index_prefix
         self._closed = False
 
         scheme, auth, host, port = _parse_opensearch_url(opensearch_url)
@@ -78,7 +80,7 @@ class OpenSearchHandler(logging.Handler):
         docs = self._buffer[:]
         self._buffer.clear()
 
-        index_name = f"cnnct-logs-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}"
+        index_name = f"{self._index_prefix}-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}"
         actions = []
         for doc in docs:
             actions.append({"index": {"_index": index_name}})
