@@ -34,9 +34,9 @@ class OpenSearchHandler(logging.Handler):
                 use_ssl=(scheme == "https"),
                 verify_certs=False,
                 ssl_show_warn=False,
-                timeout=10,
-                max_retries=2,
-                retry_on_timeout=True,
+                timeout=5,
+                max_retries=1,
+                retry_on_timeout=False,
             )
         except Exception as e:
             print(f"[OpenSearchHandler] Failed to create client: {e}", file=sys.stderr)
