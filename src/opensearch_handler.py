@@ -50,8 +50,13 @@ class OpenSearchHandler(logging.Handler):
         self._flush_thread = threading.Thread(target=self._periodic_flush, daemon=True)
         self._flush_thread.start()
 
+    # Logger names from opensearch-py that would cause a feedback loop
+    _IGNORED_LOGGERS = ("opensearch", "urllib3")
+
     def emit(self, record):
         if self._client is None:
+            return
+        if record.name.startswith(self._IGNORED_LOGGERS):
             return
         try:
             doc = {
