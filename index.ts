@@ -67,11 +67,11 @@ const app = new digitalocean.App("cnnct-app", {
                     type: "SECRET",
                 },
                 { key: "WEBHOOK_DNS_TARGET", value: config.get("webhookDnsTarget") || "example.com" },
-                {
+                ...(config.get("opensearchUrl") ? [{
                     key: "OPENSEARCH_URL",
-                    value: config.getSecret("opensearchUrl") || "",
-                    type: "SECRET",
-                },
+                    value: config.requireSecret("opensearchUrl"),
+                    type: "SECRET" as const,
+                }] : []),
             ],
         }],
 
