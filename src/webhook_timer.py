@@ -39,8 +39,16 @@ class WebhookTimer:
         self._thread.start()
         logger.info(f"WebhookTimer started: interval={interval}s, target={dns_target}")
 
+    # Round-robin test cycle: port_check → dns_lookup → http_diag
+    _TEST_TYPES = [
+        ("port_check", "Port Check"),
+        ("dns_lookup", "DNS Lookup"),
+        ("http_diag", "HTTP Diag"),
+    ]
+
     def _run(self):
         url = f"{self._base_url}/webhook-receive/{self._secret}"
+        test_index = 0
 
         while not self._closed:
             session_start = int(time.time() * 1000)
@@ -48,21 +56,48 @@ class WebhookTimer:
             if self._closed:
                 break
             session_end = int(time.time() * 1000)
+
+            test_type, task_label = self._TEST_TYPES[test_index % len(self._TEST_TYPES)]
+            test_index += 1
+
+            test_result = self._run_api_test(test_type)
+
             payload = {
                 "type": "self_ping",
                 "round": "api",
-                "task": "Heartbeat",
+                "task": task_label,
                 "seconds": self._interval,
                 "session_start": session_start,
                 "session_end": session_end,
                 "source": "webhook_timer",
                 "dns_target": self._dns_target,
+                "test_type": test_type,
+                "test_target": self._dns_target,
+                "test_result": test_result,
             }
             try:
                 resp = requests.post(url, json=payload, timeout=5)
-                logger.info(f"Self-ping sent: status={resp.status_code}")
+                logger.info(f"Self-ping sent: type={test_type} status={resp.status_code}")
             except Exception as e:
                 logger.warning(f"Self-ping failed: {e}")
+
+    def _run_api_test(self, test_type):
+        """Run an API test and return the JSON result."""
+        try:
+            if test_type == "port_check":
+                endpoint = f"{self._base_url}/cnnct?target={self._dns_target}"
+            elif test_type == "dns_lookup":
+                endpoint = f"{self._base_url}/dns/{self._dns_target}"
+            elif test_type == "http_diag":
+                endpoint = f"{self._base_url}/diag?url=https://{self._dns_target}"
+            else:
+                return None
+
+            resp = requests.get(endpoint, timeout=10)
+            return resp.json()
+        except Exception as e:
+            logger.warning(f"API test {test_type} failed: {e}")
+            return {"error": str(e)}
 
     def close(self):
         self._closed = True
