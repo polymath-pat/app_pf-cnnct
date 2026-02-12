@@ -7,7 +7,7 @@ import time
 import json
 import dns.resolver  # Requires dnspython in requirements.txt
 import redis
-from flask import Flask, request, jsonify, Response
+from flask import Flask, g, request, jsonify, Response
 from datetime import datetime, timezone
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -27,17 +27,26 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-# Attach OpenSearch handler if OPENSEARCH_URL is configured
+# Attach OpenSearch handlers if OPENSEARCH_URL is configured
 _opensearch_url = os.environ.get("OPENSEARCH_URL")
+_request_logger = None
 if _opensearch_url:
     try:
         try:
             from opensearch_handler import OpenSearchHandler
         except ImportError:
             from src.opensearch_handler import OpenSearchHandler
+        # App logs → cnnct-logs-*
         _os_handler = OpenSearchHandler(_opensearch_url)
         _os_handler.setLevel(logging.INFO)
         logging.getLogger().addHandler(_os_handler)
+        # API request logs → cnnct-requests-*
+        _req_handler = OpenSearchHandler(_opensearch_url, index_prefix="cnnct-requests")
+        _req_handler.setLevel(logging.INFO)
+        _request_logger = logging.getLogger("cnnct.requests")
+        _request_logger.addHandler(_req_handler)
+        _request_logger.setLevel(logging.INFO)
+        _request_logger.propagate = False
     except Exception as e:
         print(f"[WARNING] OpenSearch handler init failed, continuing without it: {e}", file=sys.stderr)
 
@@ -45,6 +54,42 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
+
+# Request logging hooks
+@app.before_request
+def _record_request_start():
+    g.request_start = time.perf_counter()
+
+
+@app.after_request
+def _log_request(response):
+    if _request_logger is None:
+        return response
+    if request.path == "/healthz":
+        return response
+    latency_ms = round((time.perf_counter() - g.get("request_start", time.perf_counter())) * 1000, 2)
+    params = dict(request.args)
+    if not params and request.is_json:
+        try:
+            body = request.get_json(silent=True)
+            if isinstance(body, dict):
+                params = {k: (v if len(str(v)) <= 200 else str(v)[:200] + "...") for k, v in body.items()}
+        except Exception:  # nosec B110 - best-effort param extraction for logging
+            pass
+    _request_logger.info(
+        json.dumps({
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "path": request.path,
+            "status_code": response.status_code,
+            "latency_ms": latency_ms,
+            "client_ip": request.remote_addr,
+            "params": params,
+            "user_agent": request.headers.get("User-Agent", ""),
+        })
+    )
+    return response
+
 
 # Initialize Flask-Migrate
 migrate = Migrate()
