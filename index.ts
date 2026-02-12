@@ -132,6 +132,16 @@ const cname = new digitalocean.DnsRecord("cnnct-dns", {
     ttl: 1800,
 });
 
+// --- Log Forwarding: PostgreSQL → OpenSearch ---
+if (config.get("opensearchUrl")) {
+    new digitalocean.DatabaseLogsinkOpensearch("pg-logsink-opensearch", {
+        clusterId: postgres.id,
+        endpoint: config.requireSecret("opensearchUrl"),
+        indexPrefix: "pg-logs",
+        indexDaysMax: 30,
+    });
+}
+
 // --- Outputs ---
 export const appUrl = app.liveUrl;
 export const customDomain = "cnnct.metaciety.net";
