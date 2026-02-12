@@ -1,15 +1,16 @@
 import logging
+import re
 import sys
 import threading
 import time
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 
 
 class OpenSearchHandler(logging.Handler):
     """Logging handler that buffers records and flushes them to OpenSearch.
 
     Parses OPENSEARCH_URL (https://user:pass@host:port) for connection details.
+    Handles passwords with special characters that break standard urlparse.
     Uses a background thread to flush buffered records every `flush_interval`
     seconds or when the buffer reaches `buffer_size` records.
     """
@@ -23,13 +24,7 @@ class OpenSearchHandler(logging.Handler):
         self._flush_interval = flush_interval
         self._closed = False
 
-        parsed = urlparse(opensearch_url)
-        host = parsed.hostname or "localhost"
-        port = parsed.port or 9200
-        scheme = parsed.scheme or "https"
-        auth = None
-        if parsed.username and parsed.password:
-            auth = (parsed.username, parsed.password)
+        scheme, auth, host, port = _parse_opensearch_url(opensearch_url)
 
         try:
             from opensearchpy import OpenSearch
@@ -103,6 +98,45 @@ class OpenSearchHandler(logging.Handler):
         self._closed = True
         self.flush()
         super().close()
+
+
+def _parse_opensearch_url(url):
+    """Parse an OpenSearch URL, handling passwords with special characters.
+
+    Supports: scheme://user:pass@host:port
+    Returns: (scheme, auth_tuple_or_None, host, port)
+    """
+    # Extract scheme
+    match = re.match(r'^(https?)://(.+)$', url)
+    if not match:
+        return "https", None, "localhost", 9200
+    scheme = match.group(1)
+    remainder = match.group(2)
+
+    # Split on last '@' to separate credentials from host (password may contain '@')
+    auth = None
+    if '@' in remainder:
+        creds, hostpart = remainder.rsplit('@', 1)
+        # Split on first ':' to separate user from password
+        if ':' in creds:
+            user, password = creds.split(':', 1)
+            auth = (user, password)
+    else:
+        hostpart = remainder
+
+    # Parse host:port
+    if ':' in hostpart:
+        host, port_str = hostpart.rsplit(':', 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            host = hostpart
+            port = 9200
+    else:
+        host = hostpart
+        port = 9200
+
+    return scheme, auth, host, port
 
 
 def _json_line(obj):
