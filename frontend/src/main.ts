@@ -325,6 +325,7 @@ function formatRound(round: string): { label: string; color: string } {
         case 'pomodoro': return { label: 'Pomodoro', color: 'text-rose-400' };
         case 'short_break': return { label: 'Short Break', color: 'text-emerald-400' };
         case 'long_break': return { label: 'Long Break', color: 'text-blue-400' };
+        case 'api': return { label: 'Api', color: 'text-amber-400' };
         default: return { label: round || 'unknown', color: 'text-slate-400' };
     }
 }

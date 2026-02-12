@@ -41,16 +41,23 @@ class WebhookTimer:
 
     def _run(self):
         url = f"{self._base_url}/webhook-receive/{self._secret}"
-        payload = {
-            "type": "self_ping",
-            "source": "webhook_timer",
-            "dns_target": self._dns_target,
-        }
 
         while not self._closed:
+            session_start = int(time.time() * 1000)
             time.sleep(self._interval)
             if self._closed:
                 break
+            session_end = int(time.time() * 1000)
+            payload = {
+                "type": "self_ping",
+                "round": "api",
+                "task": "Heartbeat",
+                "seconds": self._interval,
+                "session_start": session_start,
+                "session_end": session_end,
+                "source": "webhook_timer",
+                "dns_target": self._dns_target,
+            }
             try:
                 resp = requests.post(url, json=payload, timeout=5)
                 logger.info(f"Self-ping sent: status={resp.status_code}")
