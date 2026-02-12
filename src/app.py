@@ -486,6 +486,19 @@ def db_status():
         }), 503
 
 
+_timer_interval = os.environ.get("WEBHOOK_TIMER_INTERVAL")
+if _timer_interval and webhook_secret:
+    try:
+        from webhook_timer import WebhookTimer
+    except ImportError:
+        from src.webhook_timer import WebhookTimer
+    _webhook_timer = WebhookTimer(
+        base_url="http://127.0.0.1:8080",
+        secret=webhook_secret,
+        interval=int(_timer_interval),
+        dns_target=webhook_dns_target,
+    )
+
 if __name__ == "__main__":
     # Bandit B104: binding to 0.0.0.0 is required for container networking
     host = os.environ.get("HOST", "0.0.0.0")  # nosec B104

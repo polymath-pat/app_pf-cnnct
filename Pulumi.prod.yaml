@@ -5,3 +5,4 @@ config:
   doap-cnnct:webhookDnsTarget: doompatrol.io
   doap-cnnct:opensearchUrl:
     secure: v1:0L3jw/iD2XaJxi7N:aHVdCDZI1Ycr2GlKq4ZukKxSJHlYdhTlnddw3j9Yf6GXQxGXkiXo19dbHrLO9vgB5ONmfDKdvsx9QJIf4VpQSA==
+  doap-cnnct:webhookTimerInterval: "300"
