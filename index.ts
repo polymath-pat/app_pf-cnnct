@@ -25,11 +25,17 @@ const postgres = new digitalocean.DatabaseCluster("cnnct-postgres", {
     nodeCount: 1,
 });
 
+// --- VPC: use existing default SFO3 VPC for private networking ---
+const vpcId = config.get("vpcId") || "7a01284b-392e-4846-88ad-cb2ee89a8c0b";
+
 // --- App Platform ---
 const app = new digitalocean.App("cnnct-app", {
     spec: {
         name: "cnnct",
         region: region,
+
+        // Connect to VPC for private networking with droplets
+        vpcs: [{ id: vpcId }],
 
         // Backend API service (from DOCR image)
         services: [{
@@ -127,3 +133,4 @@ export const appUrl = app.liveUrl;
 export const customDomain = "cnnct.metaciety.net";
 export const valkeyHost = valkey.host;
 export const postgresHost = postgres.host;
+export const appVpcId = vpcId;
