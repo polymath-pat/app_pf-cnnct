@@ -77,7 +77,8 @@ def _log_request(response):
         except Exception:  # nosec B110 - best-effort param extraction for logging
             pass
     _request_logger.info(
-        json.dumps({
+        "request",
+        extra={"extra_fields": {
             "endpoint": request.endpoint,
             "method": request.method,
             "path": request.path,
@@ -86,7 +87,7 @@ def _log_request(response):
             "client_ip": request.remote_addr,
             "params": params,
             "user_agent": request.headers.get("User-Agent", ""),
-        })
+        }}
     )
     return response
 
