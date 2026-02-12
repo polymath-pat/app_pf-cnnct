@@ -26,6 +26,18 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] in %(module)s: %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+
+# Attach OpenSearch handler if OPENSEARCH_URL is configured
+_opensearch_url = os.environ.get("OPENSEARCH_URL")
+if _opensearch_url:
+    try:
+        from opensearch_handler import OpenSearchHandler
+    except ImportError:
+        from src.opensearch_handler import OpenSearchHandler
+    _os_handler = OpenSearchHandler(_opensearch_url)
+    _os_handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(_os_handler)
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)

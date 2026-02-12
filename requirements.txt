@@ -7,3 +7,4 @@ dnspython
 SQLAlchemy>=2.0
 psycopg2-binary
 Flask-Migrate
+opensearch-py
