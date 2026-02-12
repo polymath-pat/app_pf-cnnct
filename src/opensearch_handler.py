@@ -75,9 +75,13 @@ class OpenSearchHandler(logging.Handler):
     def _periodic_flush(self):
         while not self._closed:
             time.sleep(self._flush_interval)
-            with self._lock:
+            if not self._lock.acquire(timeout=1):
+                continue
+            try:
                 if self._buffer:
                     self._flush_locked()
+            finally:
+                self._lock.release()
 
     def _flush_locked(self):
         """Flush buffer to OpenSearch. Must be called with self._lock held."""
@@ -100,8 +104,11 @@ class OpenSearchHandler(logging.Handler):
             print(f"[OpenSearchHandler] Flush failed: {e}", file=sys.stderr)
 
     def flush(self):
-        with self._lock:
-            self._flush_locked()
+        if self._lock.acquire(timeout=2):
+            try:
+                self._flush_locked()
+            finally:
+                self._lock.release()
 
     def close(self):
         self._closed = True
