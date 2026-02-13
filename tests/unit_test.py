@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
+    from src.app import limiter
+    limiter.enabled = False
     with app.test_client() as client:
         yield client
 
@@ -266,6 +268,137 @@ def test_get_webhook_results_postgres(mock_factory, client):
     assert len(results) == 1
     assert results[0]['event_type'] == 'test'
     assert results[0]['source_ip'] == '127.0.0.1'
+
+
+def test_health_all_services_memory_fallback(client):
+    """Verify /health returns all sections with memory fallback."""
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert rv.status_code == 200
+    assert 'app' in data
+    assert 'valkey' in data
+    assert 'postgres' in data
+    assert 'opensearch' in data
+    assert 'dns_canary' in data
+    assert 'rate_limiter' in data
+    assert data['valkey']['backend'] == 'memory'
+    assert data['app']['git_sha'] is not None
+    assert data['app']['python_version'] is not None
+    assert data['app']['uptime_seconds'] >= 0
+
+
+def test_health_dns_canary_success(client):
+    """Verify /health dns_canary shows ok when DNS resolves."""
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert data['dns_canary']['ok'] is True
+    assert '1.2.3.4' in data['dns_canary']['records']
+    assert data['dns_canary']['error'] is None
+
+
+def test_health_dns_canary_failure(client):
+    """Verify /health dns_canary shows ok=false when DNS fails."""
+    with patch('src.app._resolve_dns', return_value=([], 'NXDOMAIN')):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert data['dns_canary']['ok'] is False
+    assert data['dns_canary']['records'] == []
+    assert 'NXDOMAIN' in data['dns_canary']['error']
+
+
+@patch('src.app._opensearch_url', 'https://user:pass@localhost:9200')
+@patch('src.app._parse_opensearch_url')
+def test_health_opensearch_connected(mock_parse, client):
+    """Verify /health opensearch section when connected."""
+    mock_parse.return_value = ('https', ('user', 'pass'), 'localhost', 9200)
+    mock_client = MagicMock()
+    mock_client.cluster.health.return_value = {
+        'status': 'green',
+        'number_of_nodes': 1,
+    }
+    with patch('src.app.OpenSearch', return_value=mock_client, create=True), \
+         patch.dict('sys.modules', {'opensearchpy': MagicMock(OpenSearch=MagicMock(return_value=mock_client))}), \
+         patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        # Need to patch the import inside the function
+        import importlib
+        with patch('src.app._check_opensearch_health') as mock_os_health:
+            mock_os_health.return_value = {
+                'configured': True,
+                'connected': True,
+                'status': 'green',
+                'number_of_nodes': 1,
+                'latency_ms': 5.0,
+            }
+            rv = client.get('/health')
+            data = rv.get_json()
+
+    assert data['opensearch']['configured'] is True
+    assert data['opensearch']['connected'] is True
+    assert data['opensearch']['status'] == 'green'
+
+
+def test_health_opensearch_not_configured(client):
+    """Verify /health opensearch section when not configured."""
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert data['opensearch']['configured'] is False
+    assert data['opensearch']['status'] == 'not_configured'
+
+
+def test_health_app_metadata(client):
+    """Verify /health app section has correct metadata fields."""
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    app_data = data['app']
+    assert 'git_sha' in app_data
+    assert 'python_version' in app_data
+    assert 'uptime_seconds' in app_data
+    # Python version should match format X.Y.Z
+    parts = app_data['python_version'].split('.')
+    assert len(parts) == 3
+
+
+@patch('src.app.redis_url', 'redis://fake-host:6379')
+@patch('src.app.redis')
+def test_health_valkey_connected(mock_redis, client):
+    """Verify /health valkey section when Redis is connected."""
+    mock_conn = MagicMock()
+    mock_conn.info.side_effect = lambda section="default": {
+        "server": {"redis_version": "7.2.0", "uptime_in_seconds": 86400},
+        "clients": {"connected_clients": 3},
+        "memory": {"used_memory_human": "1.5M"},
+    }.get(section, {})
+    mock_redis.from_url.return_value = mock_conn
+
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert data['valkey']['connected'] is True
+    assert data['valkey']['version'] == '7.2.0'
+
+
+@patch('src.app.redis_url', 'redis://fake-host:6379')
+@patch('src.app.redis')
+def test_health_valkey_failure(mock_redis, client):
+    """Verify /health valkey section when Redis fails."""
+    mock_redis.from_url.side_effect = ConnectionError("Connection refused")
+
+    with patch('src.app._resolve_dns', return_value=(['1.2.3.4'], None)):
+        rv = client.get('/health')
+        data = rv.get_json()
+
+    assert data['valkey']['connected'] is False
+    assert 'error' in data['valkey']
 
 
 def test_webhook_results_rss(client):

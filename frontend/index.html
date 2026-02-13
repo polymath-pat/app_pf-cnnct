@@ -4,12 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/favicon.ico">
-    <title>CNNCT | Modern Network Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <title>CNNCT | Network Probe</title>
+    <style>
+        body { font-family: 'Share Tech Mono', monospace; }
+        h2, h3, .cyber-heading { font-family: 'Orbitron', sans-serif; }
+        .glitch-text { font-family: 'Press Start 2P', cursive; }
+    </style>
 </head>
-<body class="bg-slate-900 min-h-screen flex items-center justify-center p-4">
+<body class="bg-[#0a0e17] min-h-screen p-4 scanlines cyber-grid">
 
     <a href="https://github.com/polymath-pat/doap-cnnct" target="_blank" rel="noopener noreferrer" class="github-corner fixed top-0 right-0 z-50" aria-label="View source on GitHub">
-        <svg width="80" height="80" viewBox="0 0 250 250" class="fill-blue-500 text-slate-900" aria-hidden="true">
+        <svg width="80" height="80" viewBox="0 0 250 250" class="fill-cyan-500 text-[#0a0e17]" aria-hidden="true">
             <path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path>
             <path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path>
             <path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path>
@@ -17,58 +25,110 @@
     </a>
     <style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media(max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
 
+    <!-- Animated background blobs -->
     <div class="fixed top-0 left-0 w-full h-full overflow-hidden -z-10">
-        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-600 rounded-full mix-blend-screen filter blur-3xl opacity-10 animate-pulse"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-fuchsia-600 rounded-full mix-blend-screen filter blur-3xl opacity-10 animate-pulse"></div>
+        <div class="absolute top-3/4 left-2/3 w-64 h-64 bg-violet-600 rounded-full mix-blend-screen filter blur-3xl opacity-5 animate-pulse"></div>
     </div>
 
-    <div id="app" class="w-full max-w-2xl bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl p-8 z-10">
-        
-        <header class="text-center mb-6">
-            <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 tracking-tight mb-2">
-                CNNCT
-            </h1>
-            <p class="text-slate-400 text-sm font-medium">Modern Network Connectivity Probe</p>
-        </header>
-
-        <nav class="flex justify-center gap-1 mb-6 p-1 bg-slate-800/50 rounded-xl border border-white/5">
-            <button id="nav-port" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-white/10 rounded-lg transition-all">Port Check</button>
-            <button id="nav-dns" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-all">DNS Lookup</button>
-            <button id="nav-diag" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-all">HTTP Diag</button>
-            <button id="nav-status" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-all">Status</button>
-            <button id="nav-webhook" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-all">Webhook</button>
-        </nav>
-
-        <form id="probe-form" class="space-y-4">
-            <input
-                type="text"
-                id="target-input"
-                placeholder="Enter IP or Domain (e.g. 8.8.8.8)"
-                required
-                class="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 transition-all"
-            >
-            <button 
-                type="submit" 
-                id="submit-btn" 
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-95"
-            >
-                Test Connection
-            </button>
-        </form>
-
-        <div id="presets-area" class="flex flex-wrap gap-2 mt-4 empty:hidden"></div>
-
-        <div id="results-area" class="mt-8 space-y-3 empty:hidden animate-in fade-in slide-in-from-top-4 duration-500"></div>
+    <!-- Status Bar -->
+    <div id="status-bar" class="fixed top-0 left-0 right-0 z-40 bg-[#0a0e17]/90 backdrop-blur-md border-b border-cyan-500/20 px-4 py-2 status-bar-fade-in">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <span class="text-sm font-black cyber-heading tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-400">CNNCT</span>
+            <div id="status-meta" class="hidden sm:flex items-center gap-3 text-[10px] text-cyan-700 font-mono"></div>
+        </div>
     </div>
 
-    <button id="toggle-history" class="fixed bottom-6 right-6 p-4 bg-blue-600/20 backdrop-blur-md border border-white/10 rounded-full text-blue-400 hover:bg-blue-600/30 transition-all z-20">
-        🕒 History
+    <!-- Dashboard Grid -->
+    <div id="dashboard" class="max-w-7xl mx-auto pt-16 grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        <!-- Left Column: Tool Card -->
+        <div class="lg:col-span-2">
+            <div class="cyber-card bg-[#0d1220]/80 backdrop-blur-lg neon-border p-4 sm:p-6 md:p-8 z-10">
+                <header class="text-center mb-4 sm:mb-6">
+                    <h1 class="glitch-text text-2xl sm:text-3xl lg:text-4xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-fuchsia-400 mb-2">
+                        CNNCT
+                    </h1>
+                    <p class="text-cyan-600 text-xs sm:text-sm tracking-[0.3em] uppercase">Network Connectivity Probe</p>
+                </header>
+
+                <nav class="flex overflow-x-auto md:overflow-visible scrollbar-hide gap-1 mb-4 sm:mb-6 p-1 bg-[#0a0e17]/60 rounded-lg border border-cyan-500/10">
+                    <button id="nav-dns" class="cyber-tab cyber-tab-active shrink-0 md:flex-1 px-3 md:px-4 whitespace-nowrap py-2 text-[10px] md:text-xs lg:text-sm font-bold uppercase tracking-wider text-cyan-400 rounded-md">DNS Lookup</button>
+                    <button id="nav-diag" class="cyber-tab shrink-0 md:flex-1 px-3 md:px-4 whitespace-nowrap py-2 text-[10px] md:text-xs lg:text-sm font-bold uppercase tracking-wider text-slate-500 rounded-md">HTTP Diag</button>
+                </nav>
+
+                <form id="probe-form" class="flex gap-3 items-center">
+                    <input
+                        type="text"
+                        id="target-input"
+                        placeholder="Enter Domain for DNS lookup..."
+                        required
+                        class="cyber-input flex-1 rounded-lg px-4 py-3 text-cyan-300 placeholder-slate-600"
+                    >
+                    <button
+                        type="submit"
+                        id="submit-btn"
+                        class="cyber-btn text-white py-3 px-6 rounded-lg text-sm whitespace-nowrap"
+                    >
+                        Probe
+                    </button>
+                </form>
+
+                <div id="presets-area" class="flex flex-wrap gap-2 mt-4 empty:hidden"></div>
+
+                <div id="results-area" class="mt-4 sm:mt-6 md:mt-8 space-y-3 empty:hidden"></div>
+            </div>
+        </div>
+
+        <!-- Right Column: Status + Webhook Feed -->
+        <div class="lg:col-span-1 space-y-4">
+
+            <!-- Status Card (Terminal) -->
+            <div class="terminal-card z-10">
+                <div class="terminal-titlebar">
+                    <div class="terminal-titlebar-dots">
+                        <span class="bg-rose-500"></span>
+                        <span class="bg-amber-400"></span>
+                        <span class="bg-emerald-400"></span>
+                    </div>
+                    <span class="text-[10px] text-emerald-400/60 uppercase tracking-widest">system_status</span>
+                </div>
+                <div id="status-card-body" class="terminal-body">
+                    <span class="terminal-prompt">$</span> checking services...<span class="terminal-cursor"></span>
+                </div>
+            </div>
+
+            <!-- Webhook Feed -->
+            <div class="cyber-card bg-[#0d1220]/80 backdrop-blur-lg neon-border p-4 sm:p-6 z-10">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="cyber-heading text-xs font-bold tracking-widest text-cyan-400 uppercase flex items-center gap-2">
+                        Webhook Feed
+                        <span id="webhook-live" class="flex items-center gap-1 text-[10px] text-emerald-400">
+                            <span class="w-2 h-2 bg-emerald-400 rounded-full neon-dot"></span>
+                            LIVE
+                        </span>
+                    </h2>
+                    <a href="/api/webhook-results/rss" target="_blank" class="text-orange-400 hover:text-orange-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1" title="Subscribe to RSS feed">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.18 15.64a2.18 2.18 0 1 1 0 4.36 2.18 2.18 0 0 1 0-4.36m12.64 4.36A14.82 14.82 0 0 0 4 5.18V8.3a11.7 11.7 0 0 1 11.7 11.7h3.12m-6.24 0A8.58 8.58 0 0 0 4 11.42v3.12a5.46 5.46 0 0 1 5.46 5.46h3.12z"/></svg>
+                        RSS
+                    </a>
+                </div>
+                <div id="webhook-results-area" class="space-y-2"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <button id="toggle-history" class="fixed bottom-6 right-6 p-4 bg-fuchsia-600/15 backdrop-blur-md border border-fuchsia-500/20 rounded-full text-fuchsia-400 hover:bg-fuchsia-600/25 hover:border-fuchsia-500/40 transition-all z-20 text-sm tracking-wider uppercase">
+        History
     </button>
 
-    <aside id="history-sidebar" class="fixed top-0 left-0 h-full w-72 bg-slate-900/60 backdrop-blur-2xl border-r border-white/10 transform -translate-x-full transition-transform duration-300 ease-in-out z-30 p-6">
+    <aside id="history-sidebar" class="fixed top-0 left-0 h-full w-72 bg-[#0a0e17]/90 backdrop-blur-2xl border-r border-cyan-500/15 transform -translate-x-full transition-transform duration-300 ease-in-out z-30 p-6">
         <div class="flex justify-between items-center mb-8">
-            <h2 class="text-white font-bold text-xl">Recent Tests</h2>
-            <button id="close-history" class="text-slate-400 hover:text-white">✕</button>
+            <h2 class="cyber-heading text-white font-bold text-lg tracking-wider">Recent Tests</h2>
+            <button id="close-history" class="text-slate-500 hover:text-cyan-400 transition-colors">&#x2715;</button>
         </div>
         <div id="history-list" class="space-y-3"></div>
     </aside>

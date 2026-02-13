@@ -19,6 +19,32 @@ let webhookPage = 0;
 const WEBHOOK_PAGE_SIZE = 10;
 let webhookPollInterval = null;
 const WEBHOOK_POLL_MS = 15000; // Poll every 15 seconds
+const tabResultsCache = {
+    port: '',
+    dns: '',
+    diag: '',
+    status: '',
+    webhook: '',
+};
+function saveCurrentTabResults() {
+    tabResultsCache[currentTab] = resultsArea.innerHTML;
+}
+function restoreTabResults(tab) {
+    const cached = tabResultsCache[tab];
+    if (cached) {
+        resultsArea.innerHTML = cached;
+        attachCopyHandler();
+        if (tab === 'webhook') {
+            attachPaginationHandlers();
+        }
+    }
+    else {
+        resultsArea.innerHTML = '';
+    }
+}
+function updateTabCache() {
+    tabResultsCache[currentTab] = resultsArea.innerHTML;
+}
 const PRESETS = [
     { label: 'doompatrol.io', value: 'doompatrol.io' },
     { label: 'Google DNS', value: '8.8.8.8' },
@@ -102,45 +128,75 @@ function startWebhookPolling() {
         }
     }, WEBHOOK_POLL_MS);
 }
+function updateUrl(tab, target) {
+    const params = new URLSearchParams();
+    params.set('tab', tab || currentTab);
+    if (target)
+        params.set('target', target);
+    history.replaceState(null, '', '?' + params.toString());
+}
 navPort.onclick = () => {
     stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'port';
     updateNav(navPort);
     targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
     probeForm.classList.remove('hidden');
     renderPresets();
+    restoreTabResults('port');
+    updateUrl('port');
 };
 navDns.onclick = () => {
     stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'dns';
     updateNav(navDns);
     targetInput.placeholder = "Enter Domain for DNS lookup...";
     probeForm.classList.remove('hidden');
     renderPresets();
+    restoreTabResults('dns');
+    updateUrl('dns');
 };
 navDiag.onclick = () => {
     stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'diag';
     updateNav(navDiag);
     targetInput.placeholder = "Enter URL (e.g. https://google.com)";
     probeForm.classList.remove('hidden');
     renderPresets();
+    restoreTabResults('diag');
+    updateUrl('diag');
 };
 navStatus.onclick = async () => {
     stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'status';
     updateNav(navStatus);
     probeForm.classList.add('hidden');
     renderPresets();
-    await fetchStatus();
+    updateUrl('status');
+    if (tabResultsCache['status']) {
+        restoreTabResults('status');
+    }
+    else {
+        await fetchStatus();
+    }
 };
 navWebhook.onclick = async () => {
+    saveCurrentTabResults();
     currentTab = 'webhook';
     updateNav(navWebhook);
     probeForm.classList.add('hidden');
     renderPresets();
-    webhookPage = 0;
-    await fetchWebhookResults();
+    updateUrl('webhook');
+    if (tabResultsCache['webhook']) {
+        restoreTabResults('webhook');
+    }
+    else {
+        webhookPage = 0;
+        await fetchWebhookResults();
+    }
     startWebhookPolling();
 };
 probeForm.addEventListener('submit', async (e) => {
@@ -162,6 +218,7 @@ probeForm.addEventListener('submit', async (e) => {
             throw new Error(`Server returned ${response.status}`);
         const data = await response.json();
         lastResponse = data;
+        updateUrl(currentTab, target);
         if (currentTab === 'port') {
             renderPortResults(data);
             attachCopyHandler();
@@ -177,10 +234,12 @@ probeForm.addEventListener('submit', async (e) => {
             attachCopyHandler();
             addToHistory(target, 'HTTP', `${data.http_code} OK`);
         }
+        updateTabCache();
     }
     catch (err) {
         lastResponse = null;
         resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        updateTabCache();
     }
 });
 function renderPortResults(data) {
@@ -233,10 +292,12 @@ async function fetchStatus() {
         lastResponse = data;
         renderStatusResults(data);
         attachCopyHandler();
+        updateTabCache();
     }
     catch (err) {
         lastResponse = null;
         resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        updateTabCache();
     }
 }
 function renderStatusResults(data) {
@@ -287,12 +348,14 @@ async function fetchWebhookResults(silent = false) {
             renderWebhookResultsList(data);
             attachPaginationHandlers();
             attachCopyHandler();
+            updateTabCache();
         }
     }
     catch (err) {
         if (!silent) {
             lastResponse = null;
             resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+            updateTabCache();
         }
     }
 }
@@ -304,6 +367,7 @@ function formatRound(round) {
         case 'pomodoro': return { label: 'Pomodoro', color: 'text-rose-400' };
         case 'short_break': return { label: 'Short Break', color: 'text-emerald-400' };
         case 'long_break': return { label: 'Long Break', color: 'text-blue-400' };
+        case 'api': return { label: 'Api', color: 'text-amber-400' };
         default: return { label: round || 'unknown', color: 'text-slate-400' };
     }
 }
@@ -329,6 +393,24 @@ function renderWebhookResultsList(data) {
         const eventType = p.type || 'unknown';
         const sessionStart = p.session_start ? formatTimestamp(p.session_start) : '-';
         const sessionEnd = p.session_end ? formatTimestamp(p.session_end) : '-';
+        let testLine = '';
+        if (p.test_type && p.test_result && !p.test_result.error) {
+            const tr = p.test_result;
+            if (p.test_type === 'port_check') {
+                const status = tr.tcp_443 ? 'OPEN' : 'CLOSED';
+                const color = tr.tcp_443 ? 'text-emerald-400' : 'text-rose-400';
+                const latency = tr.latency_ms ? ` (${tr.latency_ms}ms)` : '';
+                testLine = `<span class="${color}">Port 443: ${status}${latency}</span>`;
+            }
+            else if (p.test_type === 'dns_lookup') {
+                const count = tr.records?.length ?? 0;
+                testLine = `<span class="text-emerald-400">DNS: ${count} A record${count !== 1 ? 's' : ''}</span>`;
+            }
+            else if (p.test_type === 'http_diag') {
+                const latency = tr.total_time_ms ? ` (${tr.total_time_ms}ms)` : '';
+                testLine = `<span class="text-emerald-400">HTTP ${tr.http_code}${latency}</span>`;
+            }
+        }
         return `
             <div class="bg-white/5 p-3 rounded-lg border border-white/5 mb-2">
                 <div class="flex justify-between text-[10px] mb-1">
@@ -339,6 +421,7 @@ function renderWebhookResultsList(data) {
                     <span class="text-slate-500">${time}</span>
                 </div>
                 <p class="text-white text-sm font-medium truncate">${task || '(no task)'}</p>
+                ${testLine ? `<p class="text-[10px] mt-1">${testLine}</p>` : ''}
                 <div class="flex justify-between text-[10px] mt-1">
                     <span class="text-slate-500">${sessionStart} - ${sessionEnd}</span>
                     <span class="text-slate-400">${duration}</span>
@@ -399,3 +482,40 @@ function attachPaginationHandlers() {
 }
 renderHistory();
 renderPresets();
+function initFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const target = params.get('target');
+    if (!tab)
+        return;
+    const tabNav = {
+        port: navPort,
+        dns: navDns,
+        diag: navDiag,
+        status: navStatus,
+        webhook: navWebhook,
+    };
+    const btn = tabNav[tab];
+    if (!btn)
+        return;
+    if (tab === 'status' || tab === 'webhook') {
+        btn.click();
+        return;
+    }
+    // For form-based tabs, switch tab without submitting, then fill + submit
+    currentTab = tab;
+    updateNav(btn);
+    probeForm.classList.remove('hidden');
+    renderPresets();
+    if (tab === 'port')
+        targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
+    else if (tab === 'dns')
+        targetInput.placeholder = "Enter Domain for DNS lookup...";
+    else if (tab === 'diag')
+        targetInput.placeholder = "Enter URL (e.g. https://google.com)";
+    if (target) {
+        targetInput.value = target;
+        probeForm.requestSubmit();
+    }
+}
+initFromUrl();

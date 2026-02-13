@@ -3,32 +3,72 @@ import './main.css';
 const probeForm = document.getElementById('probe-form') as HTMLFormElement;
 const targetInput = document.getElementById('target-input') as HTMLInputElement;
 const resultsArea = document.getElementById('results-area') as HTMLDivElement;
-const navPort = document.getElementById('nav-port') as HTMLButtonElement;
 const navDns = document.getElementById('nav-dns') as HTMLButtonElement;
 const navDiag = document.getElementById('nav-diag') as HTMLButtonElement;
-const navStatus = document.getElementById('nav-status') as HTMLButtonElement;
-const navWebhook = document.getElementById('nav-webhook') as HTMLButtonElement;
 const sidebar = document.getElementById('history-sidebar') as HTMLElement;
 const historyList = document.getElementById('history-list') as HTMLDivElement;
 const toggleHistory = document.getElementById('toggle-history') as HTMLButtonElement;
 const closeHistory = document.getElementById('close-history') as HTMLButtonElement;
-
 const presetsArea = document.getElementById('presets-area') as HTMLDivElement;
+const statusMeta = document.getElementById('status-meta') as HTMLDivElement;
+const statusCardBody = document.getElementById('status-card-body') as HTMLDivElement;
+const webhookResultsArea = document.getElementById('webhook-results-area') as HTMLDivElement;
 
-let currentTab: 'port' | 'dns' | 'diag' | 'status' | 'webhook' = 'port';
+let currentTab: 'dns' | 'diag' = 'dns';
 let testHistory: any[] = JSON.parse(localStorage.getItem('cnnct_history') || '[]');
 let lastResponse: any = null;
 let webhookPage = 0;
 const WEBHOOK_PAGE_SIZE = 10;
 let webhookPollInterval: number | null = null;
-const WEBHOOK_POLL_MS = 15000; // Poll every 15 seconds
+const WEBHOOK_POLL_MS = 15000;
+let lastWebhookResponse: any = null;
 
-const PRESETS: { label: string; value: string }[] = [
+const tabResultsCache: Record<string, string> = {
+    dns: '',
+    diag: '',
+};
+
+interface HealthResponse {
+    app: { git_sha: string; uptime_seconds: number; python_version: string };
+    valkey: { connected: boolean; backend: string; error?: string; latency_ms?: number; version?: string; [key: string]: any };
+    postgres: { connected: boolean; backend: string; error?: string; latency_ms?: number; version?: string; [key: string]: any };
+    opensearch: { configured: boolean; connected?: boolean; status: string; latency_ms?: number; [key: string]: any };
+    dns_canary: { domain: string; ok: boolean; records: string[]; latency_ms: number; error: string | null };
+    rate_limiter: { backend: string; in_memory_fallback: boolean };
+}
+
+// --- Per-tab presets ---
+const DNS_PRESETS: { label: string; value: string }[] = [
     { label: 'doompatrol.io', value: 'doompatrol.io' },
-    { label: 'Google DNS', value: '8.8.8.8' },
-    { label: 'Cloudflare', value: '1.1.1.1' },
-    { label: 'GitHub', value: 'github.com' },
+    { label: 'google.com', value: 'google.com' },
+    { label: 'github.com', value: 'github.com' },
+    { label: 'cloudflare.com', value: 'cloudflare.com' },
 ];
+
+const DIAG_PRESETS: { label: string; value: string }[] = [
+    { label: 'doompatrol.io', value: 'https://doompatrol.io' },
+    { label: 'Google', value: 'https://google.com' },
+    { label: 'GitHub', value: 'https://github.com' },
+    { label: 'Cloudflare', value: 'https://cloudflare.com' },
+];
+
+function saveCurrentTabResults() {
+    tabResultsCache[currentTab] = resultsArea.innerHTML;
+}
+
+function restoreTabResults(tab: string) {
+    const cached = tabResultsCache[tab];
+    if (cached) {
+        resultsArea.innerHTML = cached;
+        attachCopyHandler();
+    } else {
+        resultsArea.innerHTML = '';
+    }
+}
+
+function updateTabCache() {
+    tabResultsCache[currentTab] = resultsArea.innerHTML;
+}
 
 function addToHistory(target: string, type: string, outcome: string) {
     const entry = { target, type, outcome, time: new Date().toLocaleTimeString() };
@@ -39,18 +79,18 @@ function addToHistory(target: string, type: string, outcome: string) {
 
 function renderHistory() {
     historyList.innerHTML = testHistory.map((item: any) => `
-        <div class="p-3 bg-white/5 border border-white/5 rounded-lg mb-2">
+        <div class="p-3 bg-white/5 border border-cyan-500/10 rounded-lg mb-2 service-row">
             <div class="flex justify-between text-[10px] mb-1">
-                <span class="text-blue-400 font-bold uppercase">${item.type}</span>
-                <span class="text-slate-500">${item.time}</span>
+                <span class="text-cyan-400 font-bold uppercase">${item.type}</span>
+                <span class="text-slate-600">${item.time}</span>
             </div>
-            <p class="text-white text-sm font-mono truncate">${item.target}</p>
+            <p class="text-cyan-200 text-sm font-mono truncate">${item.target}</p>
         </div>
     `).join('');
 }
 
 function copyButtonHtml(): string {
-    return `<button id="copy-json-btn" class="mt-3 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white text-[10px] font-bold uppercase tracking-wider py-2 rounded-lg transition-all">Copy JSON</button>`;
+    return `<button id="copy-json-btn" class="mt-3 w-full bg-white/5 hover:bg-cyan-500/10 border border-cyan-500/10 text-slate-500 hover:text-cyan-400 text-[10px] font-bold uppercase tracking-wider py-2 rounded-lg transition-all">Copy JSON</button>`;
 }
 
 function attachCopyHandler() {
@@ -70,13 +110,9 @@ function attachCopyHandler() {
 }
 
 function renderPresets() {
-    if (currentTab === 'status' || currentTab === 'webhook') {
-        presetsArea.innerHTML = '';
-        return;
-    }
-    presetsArea.innerHTML = PRESETS.map(p => {
-        const val = currentTab === 'diag' ? `https://${p.value}` : p.value;
-        return `<button type="button" data-preset="${val}" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-white/5 hover:bg-blue-600/30 text-slate-400 hover:text-blue-300 border border-white/10 transition-all">${p.label}</button>`;
+    const presets = currentTab === 'diag' ? DIAG_PRESETS : DNS_PRESETS;
+    presetsArea.innerHTML = presets.map(p => {
+        return `<button type="button" data-preset="${p.value}" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-white/5 hover:bg-cyan-500/15 text-slate-500 hover:text-cyan-300 border border-cyan-500/10 hover:border-cyan-500/30 transition-all">${p.label}</button>`;
     }).join('');
     presetsArea.querySelectorAll('[data-preset]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -86,31 +122,22 @@ function renderPresets() {
     });
 }
 
-toggleHistory.onclick = () => sidebar.classList.remove('-translate-x-full');
+toggleHistory.onclick = () => sidebar.classList.toggle('-translate-x-full');
 closeHistory.onclick = () => sidebar.classList.add('-translate-x-full');
 
 function updateNav(active: HTMLButtonElement) {
-    [navPort, navDns, navDiag, navStatus, navWebhook].forEach(btn => {
-        btn.classList.remove('bg-white/10', 'text-blue-400');
-        btn.classList.add('text-slate-400');
+    [navDns, navDiag].forEach(btn => {
+        btn.classList.remove('cyber-tab-active', 'text-cyan-400');
+        btn.classList.add('text-slate-500');
     });
-    active.classList.add('bg-white/10', 'text-blue-400');
-    active.classList.remove('text-slate-400');
-}
-
-function stopWebhookPolling() {
-    if (webhookPollInterval !== null) {
-        clearInterval(webhookPollInterval);
-        webhookPollInterval = null;
-    }
+    active.classList.add('cyber-tab-active', 'text-cyan-400');
+    active.classList.remove('text-slate-500');
 }
 
 function startWebhookPolling() {
-    stopWebhookPolling();
+    if (webhookPollInterval !== null) return;
     webhookPollInterval = window.setInterval(async () => {
-        if (currentTab === 'webhook') {
-            await fetchWebhookResults(true); // silent refresh
-        }
+        await fetchWebhookResults(true);
     }, WEBHOOK_POLL_MS);
 }
 
@@ -121,55 +148,26 @@ function updateUrl(tab?: string, target?: string) {
     history.replaceState(null, '', '?' + params.toString());
 }
 
-navPort.onclick = () => {
-    stopWebhookPolling();
-    currentTab = 'port';
-    updateNav(navPort);
-    targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
-    probeForm.classList.remove('hidden');
-    renderPresets();
-    updateUrl('port');
-};
-
 navDns.onclick = () => {
-    stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'dns';
     updateNav(navDns);
     targetInput.placeholder = "Enter Domain for DNS lookup...";
     probeForm.classList.remove('hidden');
     renderPresets();
+    restoreTabResults('dns');
     updateUrl('dns');
 };
 
 navDiag.onclick = () => {
-    stopWebhookPolling();
+    saveCurrentTabResults();
     currentTab = 'diag';
     updateNav(navDiag);
     targetInput.placeholder = "Enter URL (e.g. https://google.com)";
     probeForm.classList.remove('hidden');
     renderPresets();
+    restoreTabResults('diag');
     updateUrl('diag');
-};
-
-navStatus.onclick = async () => {
-    stopWebhookPolling();
-    currentTab = 'status';
-    updateNav(navStatus);
-    probeForm.classList.add('hidden');
-    renderPresets();
-    updateUrl('status');
-    await fetchStatus();
-};
-
-navWebhook.onclick = async () => {
-    currentTab = 'webhook';
-    updateNav(navWebhook);
-    probeForm.classList.add('hidden');
-    renderPresets();
-    updateUrl('webhook');
-    webhookPage = 0;
-    await fetchWebhookResults();
-    startWebhookPolling();
 };
 
 probeForm.addEventListener('submit', async (e: Event) => {
@@ -177,12 +175,11 @@ probeForm.addEventListener('submit', async (e: Event) => {
     const target = targetInput.value.trim();
     if (!target) return;
 
-    resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Probing...</div>`;
+    resultsArea.innerHTML = `<div class="p-4 bg-cyan-500/5 border border-cyan-500/10 rounded-lg text-cyan-500 animate-pulse">Probing target...</div>`;
 
     try {
         let endpoint = '';
-        if (currentTab === 'port') endpoint = `/api/cnnct?target=${encodeURIComponent(target)}`;
-        else if (currentTab === 'dns') endpoint = `/api/dns/${encodeURIComponent(target)}`;
+        if (currentTab === 'dns') endpoint = `/api/dns/${encodeURIComponent(target)}`;
         else if (currentTab === 'diag') endpoint = `/api/diag?url=${encodeURIComponent(target)}`;
 
         const response = await fetch(endpoint);
@@ -194,11 +191,7 @@ probeForm.addEventListener('submit', async (e: Event) => {
 
         updateUrl(currentTab, target);
 
-        if (currentTab === 'port') {
-            renderPortResults(data);
-            attachCopyHandler();
-            addToHistory(target, 'Port', data.tcp_443 ? 'Success' : 'Failed');
-        } else if (currentTab === 'dns') {
+        if (currentTab === 'dns') {
             renderDnsResults(data);
             attachCopyHandler();
             addToHistory(target, 'DNS', 'Resolved');
@@ -207,125 +200,149 @@ probeForm.addEventListener('submit', async (e: Event) => {
             attachCopyHandler();
             addToHistory(target, 'HTTP', `${data.http_code} OK`);
         }
+        updateTabCache();
     } catch (err) {
         lastResponse = null;
-        resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        resultsArea.innerHTML = `<div class="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">Error: ${err}</div>`;
+        updateTabCache();
     }
 });
 
-function renderPortResults(data: any) {
-    const color = data.tcp_443 ? 'text-emerald-400' : 'text-rose-400';
-    resultsArea.innerHTML = `
-        <div class="pt-6 border-t border-white/10 mt-6">
-            <h3 class="text-white font-semibold flex items-center justify-between mb-4">
-                <span>Target: <span class="text-blue-300">${data.target}</span></span>
-                ${data.latency_ms ? `<span class="text-[10px] text-emerald-400 bg-white/5 px-2 py-1 rounded border border-white/10">${data.latency_ms}ms</span>` : ''}
-            </h3>
-            <div class="bg-white/5 p-3 rounded-lg border border-white/5 flex justify-between items-center">
-                <span class="text-slate-300 text-sm font-medium uppercase">Port 443</span>
-                <span class="text-xs font-bold ${color}">${data.tcp_443 ? 'OPEN' : 'CLOSED'}</span>
-            </div>
-        </div>` + copyButtonHtml();
-}
-
 function renderDnsResults(data: any) {
     resultsArea.innerHTML = `
-        <div class="pt-6 border-t border-white/10 mt-6">
-            <h3 class="text-white font-semibold mb-4">A Records</h3>
+        <div class="pt-6 border-t border-cyan-500/10 mt-6">
+            <h3 class="text-cyan-200 font-semibold mb-4">A Records</h3>
             <div class="space-y-2">
-                ${data.records.map((ip: string) => `<div class="bg-white/5 p-2 rounded font-mono text-emerald-400 text-sm text-center border border-white/5">${ip}</div>`).join('')}
+                ${data.records.map((ip: string) => `<div class="bg-white/5 p-2 rounded font-mono text-emerald-400 text-sm text-center border border-cyan-500/10">${ip}</div>`).join('')}
             </div>
         </div>` + copyButtonHtml();
 }
 
 function renderDiagResults(data: any) {
     resultsArea.innerHTML = `
-        <div class="pt-6 border-t border-white/10 mt-6 space-y-3">
-            <h3 class="text-white font-semibold flex items-center justify-between mb-4">
-                <span class="truncate">URL: <span class="text-blue-300">${data.url}</span></span>
-                <span class="text-[10px] text-emerald-400 bg-white/5 px-2 py-1 rounded border border-white/10">${data.http_code}</span>
+        <div class="pt-6 border-t border-cyan-500/10 mt-6 space-y-3">
+            <h3 class="text-cyan-200 font-semibold flex items-center justify-between mb-4">
+                <span class="truncate">URL: <span class="text-cyan-400">${data.url}</span></span>
+                <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">${data.http_code}</span>
             </h3>
             <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Method: <span class="text-white">${data.method}</span></div>
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">IP: <span class="text-white">${data.remote_ip}</span></div>
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Time: <span class="text-white">${data.total_time_ms}ms</span></div>
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Speed: <span class="text-white">${(data.speed_download_bps / 1024).toFixed(2)} KB/s</span></div>
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400 col-span-2">Type: <span class="text-white truncate">${data.content_type}</span></div>
-                <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400 col-span-2">Redirects: <span class="text-white">${data.redirects}</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500">Method: <span class="text-cyan-300">${data.method}</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500">IP: <span class="text-cyan-300">${data.remote_ip}</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500">Time: <span class="text-cyan-300">${data.total_time_ms}ms</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500">Speed: <span class="text-cyan-300">${(data.speed_download_bps / 1024).toFixed(2)} KB/s</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500 col-span-2">Type: <span class="text-cyan-300 truncate">${data.content_type}</span></div>
+                <div class="bg-white/5 p-2 rounded border border-cyan-500/10 text-slate-500 col-span-2">Redirects: <span class="text-cyan-300">${data.redirects}</span></div>
             </div>
         </div>` + copyButtonHtml();
 }
 
-async function fetchStatus() {
-    resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Checking status...</div>`;
+// --- Status Bar + Status Card ---
+
+function formatUptime(seconds: number): string {
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    return h > 0 ? `${d}d ${h}h` : `${d}d`;
+}
+
+function renderStatusMeta(data: HealthResponse) {
+    const sha = data.app.git_sha.slice(0, 7);
+    const uptime = formatUptime(data.app.uptime_seconds);
+    statusMeta.innerHTML = `
+        <span>sha:${sha}</span>
+        <span>up:${uptime}</span>
+        <span>py:${data.app.python_version}</span>
+    `;
+}
+
+function renderStatusCard(data: HealthResponse) {
+    const services: { name: string; ok: boolean; detail: string }[] = [
+        {
+            name: 'valkey',
+            ok: data.valkey.connected,
+            detail: data.valkey.connected
+                ? `v${data.valkey.version || data.valkey.backend} ${data.valkey.latency_ms}ms`
+                : data.valkey.backend === 'memory' ? 'in-memory fallback' : 'connection refused',
+        },
+        {
+            name: 'postgres',
+            ok: data.postgres.connected,
+            detail: data.postgres.connected
+                ? `${(data.postgres.version || '').split(' ').slice(0, 2).join(' ').toLowerCase()} ${data.postgres.latency_ms}ms`
+                : data.postgres.backend === 'none' ? 'not configured' : 'connection refused',
+        },
+        {
+            name: 'opensearch',
+            ok: data.opensearch.configured ? (data.opensearch.connected ?? false) : false,
+            detail: !data.opensearch.configured
+                ? 'not configured'
+                : data.opensearch.connected ? `cluster:${data.opensearch.status} ${data.opensearch.latency_ms}ms` : 'connection refused',
+        },
+        {
+            name: 'dns_canary',
+            ok: data.dns_canary.ok,
+            detail: data.dns_canary.ok
+                ? `${data.dns_canary.records.length} record${data.dns_canary.records.length !== 1 ? 's' : ''} ${data.dns_canary.latency_ms}ms`
+                : data.dns_canary.error || 'resolution failed',
+        },
+    ];
+
+    const lines = services.map(s => {
+        const statusClass = s.ok ? 'terminal-ok' : 'terminal-fail';
+        const statusTag = s.ok ? '[ OK ]' : '[FAIL]';
+        return `<div><span class="terminal-prompt">$</span> probe <span class="text-cyan-400">${s.name}</span> <span class="${statusClass}">${statusTag}</span> <span class="terminal-dim">${s.detail}</span></div>`;
+    }).join('');
+
+    const sha = data.app.git_sha.slice(0, 7);
+    const uptime = formatUptime(data.app.uptime_seconds);
+
+    statusCardBody.innerHTML = `
+        ${lines}
+        <div class="mt-2 pt-2 border-t border-emerald-500/10">
+            <span class="terminal-prompt">$</span> sysinfo <span class="terminal-dim">sha:${sha} uptime:${uptime} py:${data.app.python_version}</span><span class="terminal-cursor"></span>
+        </div>`;
+}
+
+async function fetchAndRenderStatusBar() {
     try {
-        const response = await fetch('/api/status');
-        if (!response.ok) throw new Error(`Server returned ${response.status}`);
-        const data = await response.json();
-        lastResponse = data;
-        renderStatusResults(data);
-        attachCopyHandler();
-    } catch (err) {
-        lastResponse = null;
-        resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+        const response = await fetch('/api/health');
+        if (!response.ok) return;
+        const data: HealthResponse = await response.json();
+        renderStatusMeta(data);
+        renderStatusCard(data);
+    } catch {
+        // Status bar is best-effort; don't show errors
     }
 }
 
-function renderStatusResults(data: any) {
-    const connected = data.connected;
-    const statusColor = connected ? 'text-emerald-400' : 'text-rose-400';
-    const statusText = connected ? 'CONNECTED' : 'DISCONNECTED';
-
-    let details = '';
-    if (data.backend === 'memory') {
-        details = `<div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400 col-span-2">${data.message}</div>`;
-    } else if (connected) {
-        details = `
-            <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Version: <span class="text-white">${data.version}</span></div>
-            <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Latency: <span class="text-white">${data.latency_ms}ms</span></div>
-            <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Clients: <span class="text-white">${data.connected_clients}</span></div>
-            <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400">Memory: <span class="text-white">${data.used_memory_human}</span></div>
-            <div class="bg-white/5 p-2 rounded border border-white/5 text-slate-400 col-span-2">Uptime: <span class="text-white">${data.uptime_seconds}s</span></div>`;
-    } else {
-        details = `<div class="bg-white/5 p-2 rounded border border-white/5 text-rose-400 col-span-2">Error: ${data.error}</div>`;
-    }
-
-    resultsArea.innerHTML = `
-        <div class="pt-6 border-t border-white/10 mt-6 space-y-3">
-            <h3 class="text-white font-semibold flex items-center justify-between mb-4">
-                <span>Backend: <span class="text-blue-300">${data.backend}</span></span>
-                <span class="text-xs font-bold ${statusColor}">${statusText}</span>
-            </h3>
-            <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                ${details}
-            </div>
-        </div>` + copyButtonHtml();
-}
+// --- Webhook Feed (right panel) ---
 
 async function fetchWebhookResults(silent: boolean = false) {
     if (!silent) {
-        resultsArea.innerHTML = `<div class="p-4 bg-white/5 animate-pulse text-blue-300 rounded-xl">Loading webhook results...</div>`;
+        webhookResultsArea.innerHTML = `<div class="p-4 bg-cyan-500/5 border border-cyan-500/10 rounded-lg text-cyan-600 animate-pulse">Loading webhook data...</div>`;
     }
     try {
         const response = await fetch('/api/webhook-results');
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
         const data = await response.json();
 
-        // Check if we have new data (compare counts or first item)
-        const hasNewData = !lastResponse ||
-            data.count !== lastResponse.count ||
-            (data.results[0]?.id !== lastResponse.results?.[0]?.id);
+        const hasNewData = !lastWebhookResponse ||
+            data.count !== lastWebhookResponse.count ||
+            (data.results[0]?.id !== lastWebhookResponse.results?.[0]?.id);
 
         if (hasNewData || !silent) {
-            lastResponse = data;
+            lastWebhookResponse = data;
             renderWebhookResultsList(data);
             attachPaginationHandlers();
-            attachCopyHandler();
         }
     } catch (err) {
         if (!silent) {
-            lastResponse = null;
-            resultsArea.innerHTML = `<div class="p-4 bg-rose-500/20 text-rose-300 rounded-xl">Error: ${err}</div>`;
+            webhookResultsArea.innerHTML = `<div class="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">Error: ${err}</div>`;
         }
     }
 }
@@ -338,9 +355,9 @@ function formatRound(round: string): { label: string; color: string } {
     switch (round) {
         case 'pomodoro': return { label: 'Pomodoro', color: 'text-rose-400' };
         case 'short_break': return { label: 'Short Break', color: 'text-emerald-400' };
-        case 'long_break': return { label: 'Long Break', color: 'text-blue-400' };
+        case 'long_break': return { label: 'Long Break', color: 'text-cyan-400' };
         case 'api': return { label: 'Api', color: 'text-amber-400' };
-        default: return { label: round || 'unknown', color: 'text-slate-400' };
+        default: return { label: round || 'unknown', color: 'text-slate-500' };
     }
 }
 
@@ -352,7 +369,7 @@ function formatDuration(seconds: number): string {
 
 function renderWebhookResultsList(data: any) {
     if (data.count === 0) {
-        resultsArea.innerHTML = `<div class="p-4 bg-white/5 text-slate-400 rounded-xl text-center">No webhook events received yet</div>`;
+        webhookResultsArea.innerHTML = `<div class="p-4 bg-white/5 text-slate-500 rounded-lg text-center border border-cyan-500/10">No webhook events received yet</div>`;
         return;
     }
 
@@ -388,52 +405,38 @@ function renderWebhookResultsList(data: any) {
         }
 
         return `
-            <div class="bg-white/5 p-3 rounded-lg border border-white/5 mb-2">
+            <div class="bg-white/5 p-3 rounded-lg border border-cyan-500/10 mb-2 service-row">
                 <div class="flex justify-between text-[10px] mb-1">
                     <div class="flex gap-2">
                         <span class="${round.color} font-bold uppercase">${round.label}</span>
-                        <span class="text-purple-400 uppercase">${eventType}</span>
+                        <span class="text-fuchsia-400 uppercase">${eventType}</span>
                     </div>
-                    <span class="text-slate-500">${time}</span>
+                    <span class="text-slate-600">${time}</span>
                 </div>
-                <p class="text-white text-sm font-medium truncate">${task || '(no task)'}</p>
+                <p class="text-cyan-200 text-sm font-medium truncate">${task || '(no task)'}</p>
                 ${testLine ? `<p class="text-[10px] mt-1">${testLine}</p>` : ''}
                 <div class="flex justify-between text-[10px] mt-1">
-                    <span class="text-slate-500">${sessionStart} - ${sessionEnd}</span>
-                    <span class="text-slate-400">${duration}</span>
+                    <span class="text-slate-600">${sessionStart} - ${sessionEnd}</span>
+                    <span class="text-slate-500">${duration}</span>
                 </div>
             </div>`;
     }).join('');
 
     const pagination = totalPages > 1 ? `
         <div class="flex justify-between items-center mt-4 text-[10px]">
-            <button id="webhook-prev" class="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all ${webhookPage === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage === 0 ? 'disabled' : ''}>Prev</button>
-            <span class="text-slate-500">Page ${webhookPage + 1} of ${totalPages}</span>
-            <button id="webhook-next" class="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all ${webhookPage >= totalPages - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
+            <button id="webhook-prev" class="px-3 py-1 bg-white/5 hover:bg-cyan-500/10 border border-cyan-500/10 rounded-lg text-slate-500 hover:text-cyan-400 transition-all ${webhookPage === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage === 0 ? 'disabled' : ''}>Prev</button>
+            <span class="text-slate-600">Page ${webhookPage + 1} of ${totalPages}</span>
+            <button id="webhook-next" class="px-3 py-1 bg-white/5 hover:bg-cyan-500/10 border border-cyan-500/10 rounded-lg text-slate-500 hover:text-cyan-400 transition-all ${webhookPage >= totalPages - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${webhookPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
         </div>` : '';
 
-    const liveIndicator = `<span class="flex items-center gap-1 text-[10px] text-emerald-400">
-        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-        LIVE
-    </span>`;
+    const countLabel = `<span class="text-slate-600 text-xs">(${data.count} total)</span>`;
 
-    const rssLink = `<a href="/api/webhook-results/rss" target="_blank" class="text-orange-400 hover:text-orange-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1" title="Subscribe to RSS feed">
-        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.18 15.64a2.18 2.18 0 1 1 0 4.36 2.18 2.18 0 0 1 0-4.36m12.64 4.36A14.82 14.82 0 0 0 4 5.18V8.3a11.7 11.7 0 0 1 11.7 11.7h3.12m-6.24 0A8.58 8.58 0 0 0 4 11.42v3.12a5.46 5.46 0 0 1 5.46 5.46h3.12z"/></svg>
-        RSS
-    </a>`;
-
-    resultsArea.innerHTML = `
-        <div class="pt-6 border-t border-white/10 mt-6">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-white font-semibold flex items-center gap-2">
-                    Recent Sessions <span class="text-slate-500 text-xs">(${data.count} total)</span>
-                    ${liveIndicator}
-                </h3>
-                ${rssLink}
-            </div>
-            ${items}
-            ${pagination}
-        </div>` + copyButtonHtml();
+    webhookResultsArea.innerHTML = `
+        <h3 class="text-cyan-200 font-semibold flex items-center gap-2 mb-3">
+            Recent Sessions ${countLabel}
+        </h3>
+        ${items}
+        ${pagination}`;
 }
 
 function attachPaginationHandlers() {
@@ -443,27 +446,35 @@ function attachPaginationHandlers() {
         prevBtn.onclick = () => {
             if (webhookPage > 0) {
                 webhookPage--;
-                renderWebhookResultsList(lastResponse);
+                renderWebhookResultsList(lastWebhookResponse);
                 attachPaginationHandlers();
-                attachCopyHandler();
             }
         };
     }
     if (nextBtn) {
         nextBtn.onclick = () => {
-            const totalPages = Math.ceil(lastResponse.results.length / WEBHOOK_PAGE_SIZE);
+            const totalPages = Math.ceil(lastWebhookResponse.results.length / WEBHOOK_PAGE_SIZE);
             if (webhookPage < totalPages - 1) {
                 webhookPage++;
-                renderWebhookResultsList(lastResponse);
+                renderWebhookResultsList(lastWebhookResponse);
                 attachPaginationHandlers();
-                attachCopyHandler();
             }
         };
     }
 }
 
+// --- Init ---
+
 renderHistory();
 renderPresets();
+
+// Status bar + card: fetch immediately + refresh every 60s
+fetchAndRenderStatusBar();
+setInterval(fetchAndRenderStatusBar, 60000);
+
+// Webhook feed: fetch immediately + start polling
+fetchWebhookResults();
+startWebhookPolling();
 
 function initFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -473,29 +484,19 @@ function initFromUrl() {
     if (!tab) return;
 
     const tabNav: Record<string, HTMLButtonElement> = {
-        port: navPort,
         dns: navDns,
         diag: navDiag,
-        status: navStatus,
-        webhook: navWebhook,
     };
 
     const btn = tabNav[tab];
     if (!btn) return;
 
-    if (tab === 'status' || tab === 'webhook') {
-        btn.click();
-        return;
-    }
-
-    // For form-based tabs, switch tab without submitting, then fill + submit
     currentTab = tab as typeof currentTab;
     updateNav(btn);
     probeForm.classList.remove('hidden');
     renderPresets();
 
-    if (tab === 'port') targetInput.placeholder = "Enter IP or Domain (e.g. 8.8.8.8)";
-    else if (tab === 'dns') targetInput.placeholder = "Enter Domain for DNS lookup...";
+    if (tab === 'dns') targetInput.placeholder = "Enter Domain for DNS lookup...";
     else if (tab === 'diag') targetInput.placeholder = "Enter URL (e.g. https://google.com)";
 
     if (target) {
