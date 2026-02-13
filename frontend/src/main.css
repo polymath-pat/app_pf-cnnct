@@ -1,9 +1,12 @@
 @import "tailwindcss";
 
-/* Custom Glow Effect for the Results Box */
-#results {
-    border: 1px solid rgba(74, 222, 128, 0.2);
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+/* Hide scrollbar across browsers */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
 }
 
 /* Smooth Transition for the Test Button */
@@ -11,4 +14,242 @@
     cursor: not-allowed;
     opacity: 0.6;
     filter: grayscale(0.5);
+}
+
+/* Status bar fade-in */
+@keyframes statusBarFadeIn {
+    from { opacity: 0; transform: translateY(-100%); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.status-bar-fade-in {
+    animation: statusBarFadeIn 0.4s ease-out;
+}
+
+/* --- Cyberpunk Theme --- */
+
+/* Neon glow utilities */
+.neon-border {
+    border: 1px solid rgba(0, 255, 245, 0.3);
+    box-shadow:
+        0 0 8px rgba(0, 255, 245, 0.1),
+        inset 0 0 8px rgba(0, 255, 245, 0.05);
+}
+.neon-border:hover {
+    border-color: rgba(0, 255, 245, 0.5);
+    box-shadow:
+        0 0 15px rgba(0, 255, 245, 0.15),
+        inset 0 0 15px rgba(0, 255, 245, 0.08);
+}
+
+.neon-border-magenta {
+    border: 1px solid rgba(255, 0, 255, 0.25);
+    box-shadow:
+        0 0 8px rgba(255, 0, 255, 0.1),
+        inset 0 0 8px rgba(255, 0, 255, 0.05);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.neon-border-magenta:hover {
+    border-color: rgba(255, 0, 255, 0.45);
+    box-shadow:
+        0 0 15px rgba(255, 0, 255, 0.15),
+        inset 0 0 15px rgba(255, 0, 255, 0.08);
+}
+
+/* Terminal-style status card */
+.terminal-card {
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(0, 255, 100, 0.25);
+    border-radius: 0;
+    box-shadow:
+        0 0 8px rgba(0, 255, 100, 0.08),
+        inset 0 0 30px rgba(0, 0, 0, 0.5);
+    font-family: 'Share Tech Mono', monospace;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.terminal-card:hover {
+    border-color: rgba(0, 255, 100, 0.45);
+    box-shadow:
+        0 0 18px rgba(0, 255, 100, 0.12),
+        inset 0 0 30px rgba(0, 0, 0, 0.5);
+}
+.terminal-titlebar {
+    background: rgba(0, 255, 100, 0.08);
+    border-bottom: 1px solid rgba(0, 255, 100, 0.15);
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.terminal-titlebar-dots {
+    display: flex;
+    gap: 5px;
+}
+.terminal-titlebar-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.terminal-body {
+    padding: 12px;
+    color: rgba(0, 255, 100, 0.8);
+    font-size: 11px;
+    line-height: 1.6;
+}
+.terminal-prompt {
+    color: rgba(0, 255, 100, 0.5);
+}
+.terminal-ok {
+    color: rgba(0, 255, 100, 0.9);
+}
+.terminal-fail {
+    color: rgba(255, 80, 80, 0.9);
+}
+.terminal-dim {
+    color: rgba(0, 255, 100, 0.35);
+}
+@keyframes terminalBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+.terminal-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 13px;
+    background: rgba(0, 255, 100, 0.7);
+    animation: terminalBlink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+}
+
+/* Clipped corner cards */
+.cyber-card {
+    clip-path: polygon(
+        0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px,
+        100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px)
+    );
+    position: relative;
+}
+.cyber-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(
+        0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px,
+        100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px)
+    );
+    background: linear-gradient(135deg, rgba(0, 255, 245, 0.08), rgba(255, 0, 255, 0.05));
+    pointer-events: none;
+}
+
+/* Title glitch animation */
+@keyframes glitch {
+    0%, 100% { text-shadow: none; }
+    2% {
+        text-shadow:
+            -2px 0 #ff00ff,
+            2px 0 #00fff5;
+    }
+    4% { text-shadow: none; }
+    42% { text-shadow: none; }
+    43% {
+        text-shadow:
+            2px 0 #ff00ff,
+            -2px 0 #00fff5;
+    }
+    44.5% {
+        text-shadow:
+            -1px 0 #ff00ff,
+            1px 0 #00fff5;
+    }
+    45% { text-shadow: none; }
+}
+.glitch-text {
+    animation: glitch 4s infinite;
+}
+
+/* Scanline overlay */
+.scanlines::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
+    );
+}
+
+/* Grid background */
+.cyber-grid {
+    background-image:
+        linear-gradient(rgba(0, 255, 245, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 245, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+/* Neon submit button */
+.cyber-btn {
+    background: linear-gradient(135deg, #00b8a9, #0088cc);
+    border: 1px solid rgba(0, 255, 245, 0.4);
+    box-shadow: 0 0 12px rgba(0, 255, 245, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+.cyber-btn:hover {
+    background: linear-gradient(135deg, #00d4c8, #00aaee);
+    box-shadow: 0 0 20px rgba(0, 255, 245, 0.35);
+    border-color: rgba(0, 255, 245, 0.6);
+}
+.cyber-btn:active {
+    transform: scale(0.97);
+}
+
+/* Neon input */
+.cyber-input {
+    border: 1px solid rgba(0, 255, 245, 0.2);
+    background: rgba(0, 10, 20, 0.6);
+    transition: all 0.2s ease;
+}
+.cyber-input:focus {
+    border-color: rgba(0, 255, 245, 0.5);
+    box-shadow: 0 0 12px rgba(0, 255, 245, 0.15);
+    outline: none;
+}
+
+/* Pulsing neon dot */
+@keyframes neonPulse {
+    0%, 100% { box-shadow: 0 0 4px currentColor; }
+    50% { box-shadow: 0 0 10px currentColor, 0 0 20px currentColor; }
+}
+.neon-dot {
+    animation: neonPulse 2s ease-in-out infinite;
+}
+
+/* Status card service row hover */
+.service-row {
+    transition: background 0.15s ease;
+}
+.service-row:hover {
+    background: rgba(0, 255, 245, 0.05);
+}
+
+/* Nav tab cyberpunk style */
+.cyber-tab {
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+.cyber-tab:hover {
+    border-color: rgba(0, 255, 245, 0.2);
+    text-shadow: 0 0 8px rgba(0, 255, 245, 0.3);
+}
+.cyber-tab-active {
+    border-color: rgba(0, 255, 245, 0.3) !important;
+    background: rgba(0, 255, 245, 0.1) !important;
+    text-shadow: 0 0 8px rgba(0, 255, 245, 0.4);
 }

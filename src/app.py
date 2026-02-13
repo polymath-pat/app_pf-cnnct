@@ -20,6 +20,18 @@ try:
 except ImportError:
     from src.models import Base, WebhookEvent, get_engine, get_session_factory
 
+try:
+    from opensearch_handler import _parse_opensearch_url
+except ImportError:
+    try:
+        from src.opensearch_handler import _parse_opensearch_url
+    except ImportError:
+        _parse_opensearch_url = None
+
+_app_start_time = time.time()
+_canary_domain = os.environ.get("CANARY_DOMAIN", "cnnct.metaciety.net")
+_github_sha = os.environ.get("GITHUB_SHA", "dev")
+
 # Configure Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -178,6 +190,99 @@ def _resolve_dns(domain: str) -> tuple[list[str], str | None]:
     except Exception as e:
         logger.error(f"DNS lookup failed for {domain}: {str(e)}")
         return [], str(e)
+
+
+def _check_valkey_health() -> dict:
+    """Check Valkey/Redis connectivity and return health info."""
+    if redis_url == "memory://":
+        return {
+            "backend": "memory",
+            "connected": False,
+            "message": "Using in-memory rate limiting (no Redis configured)",
+        }
+    try:
+        start_time = time.perf_counter()
+        r = redis.from_url(redis_url, socket_connect_timeout=5, socket_timeout=5)
+        info = r.info(section="server")
+        latency = (time.perf_counter() - start_time) * 1000
+        return {
+            "backend": "redis",
+            "connected": True,
+            "latency_ms": round(latency, 2),
+            "version": info.get("redis_version", "unknown"),
+            "uptime_seconds": info.get("uptime_in_seconds", 0),
+            "connected_clients": r.info(section="clients").get("connected_clients", 0),
+            "used_memory_human": r.info(section="memory").get("used_memory_human", "unknown"),
+        }
+    except Exception as e:
+        logger.error(f"Redis status check failed: {str(e)}")
+        return {"backend": "redis", "connected": False, "error": str(e)}
+
+
+def _check_postgres_health() -> dict:
+    """Check PostgreSQL connectivity and return health info."""
+    if not database_url:
+        return {
+            "backend": "none",
+            "connected": False,
+            "message": "No DATABASE_URL configured",
+        }
+    if not _use_postgres:
+        return {
+            "backend": "postgres",
+            "connected": False,
+            "message": "PostgreSQL initialization failed",
+        }
+    try:
+        from sqlalchemy import text
+        start_time = time.perf_counter()
+        with get_db_session() as session:
+            if session:
+                result = session.execute(text("SELECT version()"))
+                version = result.scalar()
+                latency = (time.perf_counter() - start_time) * 1000
+                return {
+                    "backend": "postgres",
+                    "connected": True,
+                    "latency_ms": round(latency, 2),
+                    "version": version,
+                }
+        return {"backend": "postgres", "connected": False, "message": "No session"}
+    except Exception as e:
+        logger.error(f"PostgreSQL status check failed: {str(e)}")
+        return {"backend": "postgres", "connected": False, "error": str(e)}
+
+
+def _check_opensearch_health() -> dict:
+    """Check OpenSearch connectivity and return health info."""
+    if not _opensearch_url:
+        return {"configured": False, "status": "not_configured"}
+    if not _parse_opensearch_url:
+        return {"configured": True, "connected": False, "status": "parser_unavailable"}
+    try:
+        from opensearchpy import OpenSearch
+        scheme, auth, host, port = _parse_opensearch_url(_opensearch_url)
+        client = OpenSearch(
+            hosts=[{"host": host, "port": port}],
+            http_auth=auth,
+            use_ssl=(scheme == "https"),
+            verify_certs=False,  # nosec B501 - internal OpenSearch cluster
+            ssl_show_warn=False,
+            connection_class=None,
+        )
+        start_time = time.perf_counter()
+        health = client.cluster.health()
+        latency = (time.perf_counter() - start_time) * 1000
+        return {
+            "configured": True,
+            "connected": True,
+            "status": health.get("status", "unknown"),
+            "number_of_nodes": health.get("number_of_nodes", 0),
+            "latency_ms": round(latency, 2),
+        }
+    except Exception as e:
+        logger.error(f"OpenSearch health check failed: {str(e)}")
+        return {"configured": True, "connected": False, "status": "error", "error": str(e)}
 
 
 # Nginx proxies /api/dns/<domain> to /dns/<domain>
@@ -409,81 +514,64 @@ def get_webhook_results_rss():
 @app.route('/status', methods=['GET'])
 @limiter.limit("5 per minute")
 def redis_status():
-    if redis_url == "memory://":
-        return jsonify({
-            "backend": "memory",
-            "connected": False,
-            "message": "Using in-memory rate limiting (no Redis configured)"
-        })
-
-    try:
-        start_time = time.perf_counter()
-        r = redis.from_url(redis_url, socket_connect_timeout=5, socket_timeout=5)
-        info = r.info(section="server")
-        latency = (time.perf_counter() - start_time) * 1000
-
-        return jsonify({
-            "backend": "redis",
-            "connected": True,
-            "latency_ms": round(latency, 2),
-            "version": info.get("redis_version", "unknown"),
-            "uptime_seconds": info.get("uptime_in_seconds", 0),
-            "connected_clients": r.info(section="clients").get("connected_clients", 0),
-            "used_memory_human": r.info(section="memory").get("used_memory_human", "unknown"),
-        })
-    except Exception as e:
-        logger.error(f"Redis status check failed: {str(e)}")
-        return jsonify({
-            "backend": "redis",
-            "connected": False,
-            "error": str(e)
-        }), 503
+    data = _check_valkey_health()
+    status_code = 503 if data.get("error") else 200
+    return jsonify(data), status_code
 
 
 @app.route('/db-status', methods=['GET'])
 @limiter.limit("5 per minute")
 def db_status():
     """Check PostgreSQL database connection status."""
-    if not database_url:
-        return jsonify({
-            "backend": "none",
-            "connected": False,
-            "message": "No DATABASE_URL configured"
-        })
+    data = _check_postgres_health()
 
-    if not _use_postgres:
-        return jsonify({
-            "backend": "postgres",
-            "connected": False,
-            "message": "PostgreSQL initialization failed"
-        }), 503
+    # Augment with webhook event count when connected (preserves original shape)
+    if data.get("connected") and _use_postgres:
+        try:
+            with get_db_session() as session:
+                if session:
+                    data["webhook_events_count"] = session.query(WebhookEvent).count()
+        except Exception:
+            pass
 
-    try:
-        from sqlalchemy import text
-        start_time = time.perf_counter()
-        with get_db_session() as session:
-            if session:
-                result = session.execute(text("SELECT version()"))
-                version = result.scalar()
-                latency = (time.perf_counter() - start_time) * 1000
+    status_code = 503 if (data.get("error") or data.get("message") == "PostgreSQL initialization failed") else 200
+    return jsonify(data), status_code
 
-                # Get webhook event count
-                event_count = session.query(WebhookEvent).count()
 
-                return jsonify({
-                    "backend": "postgres",
-                    "connected": True,
-                    "latency_ms": round(latency, 2),
-                    "version": version,
-                    "webhook_events_count": event_count
-                })
-    except Exception as e:
-        logger.error(f"PostgreSQL status check failed: {str(e)}")
-        return jsonify({
-            "backend": "postgres",
-            "connected": False,
-            "error": str(e)
-        }), 503
+@app.route('/health', methods=['GET'])
+@limiter.limit("5 per minute")
+def health():
+    """Consolidated health endpoint for all backend services."""
+    # DNS canary
+    dns_start = time.perf_counter()
+    dns_records, dns_error = _resolve_dns(_canary_domain)
+    dns_latency = (time.perf_counter() - dns_start) * 1000
+
+    # Rate limiter info
+    rate_backend = "memory" if redis_url == "memory://" else "redis"
+    in_memory_fallback = rate_backend == "redis" and not _check_valkey_health().get("connected", False)
+
+    return jsonify({
+        "app": {
+            "git_sha": _github_sha,
+            "uptime_seconds": round(time.time() - _app_start_time),
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        },
+        "valkey": _check_valkey_health(),
+        "postgres": _check_postgres_health(),
+        "opensearch": _check_opensearch_health(),
+        "dns_canary": {
+            "domain": _canary_domain,
+            "ok": len(dns_records) > 0,
+            "records": dns_records,
+            "latency_ms": round(dns_latency, 2),
+            "error": dns_error,
+        },
+        "rate_limiter": {
+            "backend": rate_backend,
+            "in_memory_fallback": in_memory_fallback,
+        },
+    })
 
 
 _timer_interval = os.environ.get("WEBHOOK_TIMER_INTERVAL")
