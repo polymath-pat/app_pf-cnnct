@@ -132,6 +132,41 @@ const cname = new digitalocean.DnsRecord("cnnct-dns", {
     ttl: 1800,
 });
 
+// --- Tags ---
+const opensearchTag = new digitalocean.Tag("opensearch", { name: "opensearch" });
+
+// --- Database Trusted Sources ---
+new digitalocean.DatabaseFirewall("valkey-fw", {
+    clusterId: valkey.id,
+    rules: [
+        { type: "app", value: app.id },
+        { type: "tag", value: opensearchTag.name },
+    ],
+});
+
+new digitalocean.DatabaseFirewall("postgres-fw", {
+    clusterId: postgres.id,
+    rules: [
+        { type: "app", value: app.id },
+        { type: "tag", value: opensearchTag.name },
+    ],
+});
+
+// --- OpenSearch Droplet Firewall ---
+new digitalocean.Firewall("opensearch-fw", {
+    name: "opensearch-fw",
+    tags: [opensearchTag.name],
+    inboundRules: [
+        { protocol: "tcp", portRange: "22", sourceAddresses: ["0.0.0.0/0", "::/0"] },
+        { protocol: "tcp", portRange: "9200", sourceAddresses: ["0.0.0.0/0", "::/0"] },
+        { protocol: "tcp", portRange: "5601", sourceAddresses: ["0.0.0.0/0", "::/0"] },
+    ],
+    outboundRules: [
+        { protocol: "tcp", portRange: "all", destinationAddresses: ["0.0.0.0/0", "::/0"] },
+        { protocol: "udp", portRange: "all", destinationAddresses: ["0.0.0.0/0", "::/0"] },
+    ],
+});
+
 // --- Log Forwarding: Database → OpenSearch ---
 // The opensearchUrl contains embedded credentials with special characters that
 // break Go's url.Parse (used by the provider's validator). We must URL-encode
