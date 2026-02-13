@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/favicon.ico">
+    <title>CNNCT | Infrastructure Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;overflow:hidden;background:#0a0e17;font-family:'Share Tech Mono',monospace;">
+
+    <a href="/" id="back-link"
+       style="position:fixed;top:20px;left:20px;z-index:50;color:#00fff5;text-decoration:none;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.7;transition:opacity 0.3s;"
+       onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        &lt; DASHBOARD
+    </a>
+
+    <div id="map-title"
+         style="position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;text-align:center;">
+        <h1 style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:6px;color:#00fff5;margin:0;text-shadow:0 0 20px rgba(0,255,245,0.5);">
+            CNNCT INFRASTRUCTURE
+        </h1>
+        <p style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);margin:4px 0 0;letter-spacing:3px;">
+            LIVE TOPOLOGY MAP
+        </p>
+    </div>
+
+    <div id="legend"
+         style="position:fixed;bottom:20px;right:20px;z-index:50;background:rgba(10,14,23,0.85);border:1px solid rgba(0,255,245,0.15);border-radius:8px;padding:14px 18px;font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,0.6);backdrop-filter:blur(8px);">
+        <div style="font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:3px;color:#00fff5;margin-bottom:10px;text-transform:uppercase;">System Status</div>
+        <div id="legend-items" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+
+    <div id="map-canvas" style="width:100vw;height:100vh;position:relative;"></div>
+
+    <script type="module" src="/src/map/map-entry.ts"></script>
+</body>
+</html>
