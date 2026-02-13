@@ -2,13 +2,14 @@ export type NodeId = 'frontend' | 'backend' | 'valkey' | 'postgres' | 'opensearc
 
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 
+// Matches the actual /api/health JSON shape
 export interface HealthResponse {
-  app: ServiceStatus;
-  valkey: ServiceStatus;
-  postgres: ServiceStatus;
-  opensearch: ServiceStatus;
-  dns_canary: ServiceStatus;
-  rate_limiter: ServiceStatus;
+  app: { git_sha: string; uptime_seconds: number };
+  valkey: { connected: boolean; latency_ms?: number };
+  postgres: { connected: boolean; latency_ms?: number };
+  opensearch: { configured: boolean; connected: boolean; status?: string; latency_ms?: number };
+  dns_canary: { ok: boolean; latency_ms?: number; error?: string | null };
+  rate_limiter: { backend: string; in_memory_fallback: boolean };
 }
 
 export interface InfraNodeConfig {

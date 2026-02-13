@@ -59,25 +59,21 @@ export class MapScene {
         this.ambient.resize(width, height);
     }
     updateHealth(data) {
-        const mapping = {
-            app: 'backend',
-            valkey: 'valkey',
-            postgres: 'postgres',
-            opensearch: 'opensearch',
-            dns_canary: 'dns',
-            rate_limiter: 'valkey',
+        // Derive simple status from the rich health response objects
+        const statuses = {
+            frontend: 'healthy', // If the page loaded, frontend is up
+            backend: data.app?.uptime_seconds != null ? 'healthy' : 'down',
+            valkey: data.valkey?.connected ? 'healthy' : 'down',
+            postgres: data.postgres?.connected ? 'healthy' : 'down',
+            opensearch: data.opensearch?.connected
+                ? (data.opensearch.status === 'red' ? 'degraded' : 'healthy')
+                : (data.opensearch?.configured === false ? 'unknown' : 'down'),
+            dns: data.dns_canary?.ok ? 'healthy' : 'down',
         };
-        for (const [key, nodeId] of Object.entries(mapping)) {
-            const node = this.nodes.get(nodeId);
-            if (node) {
-                const status = data[key];
-                if (status)
-                    node.setHealth(status);
-            }
+        for (const [nodeId, status] of Object.entries(statuses)) {
+            this.nodes.get(nodeId)?.setHealth(status);
         }
-        // Frontend is always "healthy" if the page loaded
-        this.nodes.get('frontend')?.setHealth('healthy');
-        this.updateLegendHTML(data);
+        this.updateLegendHTML(statuses);
     }
     updateWebhooks(data) {
         if (this.lastWebhookCount === -1) {
@@ -103,22 +99,21 @@ export class MapScene {
             conn.update(dt);
         }
     };
-    updateLegendHTML(data) {
+    updateLegendHTML(statuses) {
         const legendItems = document.getElementById('legend-items');
         if (!legendItems)
             return;
-        const entries = [
-            { label: 'Frontend', status: 'healthy', color: '#00ff64' },
-        ];
-        const keyMap = [
-            ['Backend', 'app'],
+        const entries = [];
+        const nodeLabels = [
+            ['Frontend', 'frontend'],
+            ['Backend', 'backend'],
             ['Valkey', 'valkey'],
             ['PostgreSQL', 'postgres'],
             ['OpenSearch', 'opensearch'],
-            ['DNS Canary', 'dns_canary'],
+            ['DNS Canary', 'dns'],
         ];
-        for (const [label, key] of keyMap) {
-            const s = data[key] || 'unknown';
+        for (const [label, nodeId] of nodeLabels) {
+            const s = statuses[nodeId] || 'unknown';
             const color = s === 'healthy' ? '#00ff64' : s === 'degraded' ? '#ffd93d' : s === 'down' ? '#ff0044' : '#555577';
             entries.push({ label, status: s, color });
         }
