@@ -35,14 +35,13 @@ export class HealthPoller {
         try {
             const res = await fetch('/api/healthz');
             if (res.ok) {
-                const status = 'healthy';
                 this.onHealth({
-                    app: status,
-                    valkey: 'unknown',
-                    postgres: 'unknown',
-                    opensearch: 'unknown',
-                    dns_canary: 'unknown',
-                    rate_limiter: 'unknown',
+                    app: { git_sha: 'unknown', uptime_seconds: 0 },
+                    valkey: { connected: false },
+                    postgres: { connected: false },
+                    opensearch: { configured: false, connected: false },
+                    dns_canary: { ok: false },
+                    rate_limiter: { backend: 'unknown', in_memory_fallback: false },
                 });
             }
         }

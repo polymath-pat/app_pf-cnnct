@@ -179,12 +179,14 @@ if (config.get("opensearchUrl")) {
         const [, scheme, user, pass, hostPort] = match;
         return `${scheme}${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${hostPort}`;
     });
+    const caCert = config.getSecret("opensearchCaCert");
 
     new digitalocean.DatabaseLogsinkOpensearch("pg-logsink-opensearch", {
         clusterId: postgres.id,
         endpoint: safeEndpoint,
         indexPrefix: "pg-logs",
         indexDaysMax: 30,
+        caCert,
     });
 
     new digitalocean.DatabaseLogsinkOpensearch("valkey-logsink-opensearch", {
@@ -192,6 +194,7 @@ if (config.get("opensearchUrl")) {
         endpoint: safeEndpoint,
         indexPrefix: "valkey-logs",
         indexDaysMax: 30,
+        caCert,
     });
 }
 
