@@ -531,7 +531,7 @@ def db_status():
             with get_db_session() as session:
                 if session:
                     data["webhook_events_count"] = session.query(WebhookEvent).count()
-        except Exception:
+        except Exception:  # nosec B110 — best-effort count, non-critical
             pass
 
     status_code = 503 if (data.get("error") or data.get("message") == "PostgreSQL initialization failed") else 200
