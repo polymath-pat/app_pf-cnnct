@@ -111,6 +111,12 @@ const DECORATIVE_BUILDINGS: DecorativeDef[] = [
   { gridX: 4.0,  gridY: 2.5, width: 18, depth: 14, height: 40, color: 0x15191f, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(3) },
   { gridX: 0.5,  gridY: 3.0, width: 16, depth: 12, height: 34, color: 0x0d1520, alpha: 0.40, style: 'flat',    accentColor: pickAccent(4) },
   { gridX: 3.5,  gridY: 4.2, width: 20, depth: 14, height: 38, color: 0x1a1f2e, alpha: 0.36, style: 'stepped', accentColor: pickAccent(5) },
+  // Space Needle neighborhood
+  { gridX: -0.6, gridY: -0.4, width: 14, depth: 10, height: 30, color: 0x0d1520, alpha: 0.40, style: 'flat',    accentColor: pickAccent(6) },
+  { gridX: 0.6,  gridY: -1.2, width: 16, depth: 12, height: 36, color: 0x1a1f2e, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(7) },
+  { gridX: -0.8, gridY: -1.0, width: 12, depth: 10, height: 24, color: 0x252a3a, alpha: 0.42, style: 'stepped', accentColor: pickAccent(0) },
+  { gridX: 0.5,  gridY: -0.2, width: 14, depth: 10, height: 28, color: 0x15191f, alpha: 0.40, style: 'flat',    accentColor: pickAccent(1) },
+  { gridX: -0.4, gridY: -1.4, width: 10, depth: 8,  height: 20, color: 0x0d1520, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(2) },
 ];
 
 const TREE_POSITIONS = [
@@ -118,6 +124,9 @@ const TREE_POSITIONS = [
   { gridX: 3.1, gridY: 0.7 }, { gridX: 3.9, gridY: 1.8 }, { gridX: 4.2, gridY: 3.2 },
   { gridX: 0.5, gridY: 4.8 }, { gridX: 2.8, gridY: 4.1 }, { gridX: 5.1, gridY: 1.2 },
   { gridX: 5.7, gridY: 3.8 }, { gridX: -0.5, gridY: 2.5 }, { gridX: 1.2, gridY: 3.9 },
+  // Space Needle park trees
+  { gridX: -0.3, gridY: -0.6 }, { gridX: 0.3, gridY: -0.5 }, { gridX: -0.1, gridY: -1.1 },
+  { gridX: 0.4, gridY: -0.9 }, { gridX: -0.5, gridY: -0.1 },
 ];
 
 const ROAD_SEGMENTS: [number, number, number, number][] = [
@@ -146,6 +155,24 @@ const NEON_POOL_DEFS: NeonPool[] = [
   { gridX: 0, gridY: 4, rx: 16, ry: 8,  color: 0xff00ff, freq: 2.0 },
   { gridX: 4, gridY: 4, rx: 20, ry: 10, color: 0xffd93d, freq: 1.1 },
   { gridX: 2, gridY: 0, rx: 18, ry: 9,  color: 0x00ff64, freq: 1.6 },
+  // Space Needle park pool
+  { gridX: 0, gridY: -0.3, rx: 14, ry: 7,  color: 0x44aaff, freq: 1.4 },
+];
+
+interface MysteryDataDef {
+  gridX: number;
+  gridY: number;
+  color: number;
+  size: number;
+  freq: number;
+}
+
+const MYSTERY_DATA: MysteryDataDef[] = [
+  { gridX: 1, gridY: 1.5, color: 0x00ff64, size: 6, freq: 1.5 },
+  { gridX: 3.5, gridY: 1.5, color: 0x4488ff, size: 7, freq: 1.2 },
+  { gridX: 0.5, gridY: 3.5, color: 0xaa44ff, size: 6, freq: 1.8 },
+  { gridX: 4.5, gridY: 0.5, color: 0x00ff64, size: 5, freq: 1.6 },
+  { gridX: 2.5, gridY: 3.8, color: 0x4488ff, size: 6, freq: 1.3 },
 ];
 
 const NEON_COLORS = [0x00fff5, 0xff00ff, 0xffd93d, 0x00ff64, 0xff4444, 0xff8800, 0x44aaff, 0xaa66ff];
@@ -183,9 +210,13 @@ export class Cityscape extends Container {
   private peripheralBuildings = new Graphics();
   private arcade = new Graphics();
   private arcadeGhosts = new Graphics();
+  private spaceNeedle = new Graphics();
+  private spaceNeedleBeacon = new Graphics();
   private trees = new Graphics();
   private neonPools = new Graphics();
   private neonSigns = new Graphics();
+  private mysteryData = new Graphics();
+  private arcadeBanner = new Graphics();
   private warningLights = new Graphics();
   private spinner = new Graphics();
   private navi = new Graphics();
@@ -216,6 +247,11 @@ export class Cityscape extends Container {
   // Power pill ghost effect
   private powerPillTimer = 0; // seconds remaining, 0 = off
 
+  // UFO attack effect
+  private ufoAttack = new Graphics();
+  private ufoTimer = 0; // seconds remaining, 0 = off
+  private ufoPhase = 0; // animation progress
+
   constructor() {
     super();
     this.addChild(this.roads);
@@ -223,9 +259,14 @@ export class Cityscape extends Container {
     this.addChild(this.peripheralBuildings);
     this.addChild(this.arcade);
     this.addChild(this.arcadeGhosts);
+    this.addChild(this.spaceNeedle);
+    this.addChild(this.spaceNeedleBeacon);
+    this.addChild(this.ufoAttack);
     this.addChild(this.trees);
     this.addChild(this.neonPools);
+    this.addChild(this.mysteryData);
     this.addChild(this.neonSigns);
+    this.addChild(this.arcadeBanner);
     this.addChild(this.warningLights);
     this.addChild(this.navi);
     this.addChild(this.spinner);
@@ -271,6 +312,7 @@ export class Cityscape extends Container {
     this.drawDecorativeBuildings();
     this.drawPeripheralBuildings();
     this.drawArcade();
+    this.drawSpaceNeedle();
     this.drawTrees();
     // Recompute neon sign screen positions
     for (const sign of this.neonSignDefs) {
@@ -837,8 +879,216 @@ export class Cityscape extends Container {
     }
   }
 
+  private drawSpaceNeedle(): void {
+    this.spaceNeedle.clear();
+    const g = this.spaceNeedle;
+    const pos = isoProject(0, -0.8, this.centerX, this.centerY);
+    const x = pos.x;
+    const y = pos.y;
+    const alpha = 0.50;
+    const steelGray = 0x8899aa;
+    const darkShaft = 0x556677;
+    const accent = 0x00fff5;
+    const magenta = 0xff00ff;
+
+    // Total height ~120px — taller and more prominent
+    const totalH = 120;
+    const baseY = y;
+    const legTopY = baseY - totalH * 0.28;
+    const deckY = baseY - totalH * 0.62;
+    const spireTopY = baseY - totalH;
+
+    // === Ground shadow (drawn first, behind everything) ===
+    g.ellipse(x, baseY + 2, 16, 6)
+      .fill({ color: 0x000000, alpha: 0.10 });
+
+    // === Base platform — isometric diamond pad ===
+    const padHW = 16;
+    const padHD = 7;
+    g.poly([x, baseY - padHD, x + padHW, baseY, x, baseY + padHD, x - padHW, baseY])
+      .fill({ color: 0x1a2a3f, alpha: 0.30 });
+    g.moveTo(x, baseY - padHD).lineTo(x + padHW, baseY)
+      .lineTo(x, baseY + padHD).lineTo(x - padHW, baseY).closePath()
+      .stroke({ color: accent, alpha: 0.18, width: 1 });
+
+    // === Tripod legs with structural cross-bracing ===
+    const legSpread = 16;
+    // Outer legs — thicker, gradient feel via double stroke
+    for (const [lx, ly] of [[x - legSpread, baseY], [x + legSpread, baseY], [x, baseY + 5]] as [number, number][]) {
+      // Glow stroke behind
+      g.moveTo(lx, ly).lineTo(x + (lx === x ? 0 : (lx < x ? 1 : -1)), legTopY)
+        .stroke({ color: accent, alpha: 0.08, width: 4 });
+      // Main steel stroke
+      g.moveTo(lx, ly).lineTo(x + (lx === x ? 0 : (lx < x ? 1 : -1)), legTopY)
+        .stroke({ color: steelGray, alpha, width: 2 });
+      // Foot accent
+      g.circle(lx, ly, 2)
+        .fill({ color: accent, alpha: 0.20 });
+    }
+
+    // Cross-bracing between legs (structural diamond pattern)
+    const braceCount = 3;
+    for (let i = 1; i <= braceCount; i++) {
+      const t = i / (braceCount + 1);
+      const brY = baseY + (legTopY - baseY) * t;
+      const spread = legSpread * (1 - t);
+      g.moveTo(x - spread, brY).lineTo(x + spread, brY)
+        .stroke({ color: darkShaft, alpha: alpha * 0.5, width: 0.8 });
+      // X cross
+      if (i < braceCount) {
+        const t2 = (i + 1) / (braceCount + 1);
+        const brY2 = baseY + (legTopY - baseY) * t2;
+        const spread2 = legSpread * (1 - t2);
+        g.moveTo(x - spread, brY).lineTo(x + spread2, brY2)
+          .stroke({ color: darkShaft, alpha: alpha * 0.3, width: 0.5 });
+        g.moveTo(x + spread, brY).lineTo(x - spread2, brY2)
+          .stroke({ color: darkShaft, alpha: alpha * 0.3, width: 0.5 });
+      }
+    }
+
+    // === Central shaft — tapered with neon accent strips ===
+    const shaftTop = deckY + 8;
+    const shaftBot = legTopY;
+    const shaftW = 2;
+    g.poly([
+      x - shaftW - 1, shaftBot,
+      x + shaftW + 1, shaftBot,
+      x + shaftW, shaftTop,
+      x - shaftW, shaftTop,
+    ]).fill({ color: darkShaft, alpha });
+    // Neon accent strips running up shaft
+    g.moveTo(x - shaftW, shaftBot).lineTo(x - shaftW, shaftTop)
+      .stroke({ color: accent, alpha: 0.20, width: 0.8 });
+    g.moveTo(x + shaftW, shaftBot).lineTo(x + shaftW, shaftTop)
+      .stroke({ color: magenta, alpha: 0.15, width: 0.8 });
+
+    // === Observation deck — wider, multi-layered saucer ===
+    const deckHW = 22;
+    const deckHD = 10;
+    const deckThick = 6;
+
+    // Deck underside glow (drawn before deck so it's behind)
+    g.poly([
+      x - deckHW * 0.8, deckY + deckThick + 1,
+      x, deckY + deckHD + deckThick + 2,
+      x + deckHW * 0.8, deckY + deckThick + 1,
+    ]).fill({ color: accent, alpha: 0.06 });
+
+    // Main deck top surface
+    g.poly([
+      x, deckY - deckHD,
+      x + deckHW, deckY,
+      x, deckY + deckHD,
+      x - deckHW, deckY,
+    ]).fill({ color: shade(steelGray, 0.95), alpha: alpha * 1.1 });
+
+    // Inner ring on top face (restaurant level)
+    const innerHW = deckHW * 0.55;
+    const innerHD = deckHD * 0.55;
+    g.poly([
+      x, deckY - innerHD,
+      x + innerHW, deckY,
+      x, deckY + innerHD,
+      x - innerHW, deckY,
+    ]).fill({ color: shade(steelGray, 1.1), alpha: alpha * 0.6 });
+    g.moveTo(x, deckY - innerHD).lineTo(x + innerHW, deckY)
+      .lineTo(x, deckY + innerHD).lineTo(x - innerHW, deckY).closePath()
+      .stroke({ color: accent, alpha: 0.18, width: 0.5 });
+
+    // Deck left underside
+    g.poly([
+      x - deckHW, deckY,
+      x, deckY + deckHD,
+      x, deckY + deckHD + deckThick,
+      x - deckHW, deckY + deckThick,
+    ]).fill({ color: shade(steelGray, 0.35), alpha });
+
+    // Deck right underside
+    g.poly([
+      x + deckHW, deckY,
+      x, deckY + deckHD,
+      x, deckY + deckHD + deckThick,
+      x + deckHW, deckY + deckThick,
+    ]).fill({ color: shade(steelGray, 0.55), alpha });
+
+    // Deck rim — dual accent edges (cyan outer, magenta inner)
+    g.moveTo(x, deckY - deckHD).lineTo(x + deckHW, deckY)
+      .lineTo(x, deckY + deckHD).lineTo(x - deckHW, deckY).closePath()
+      .stroke({ color: accent, alpha: 0.30, width: 1.5 });
+    g.moveTo(x, deckY - deckHD + 1).lineTo(x + deckHW - 1, deckY)
+      .lineTo(x, deckY + deckHD - 1).lineTo(x - deckHW + 1, deckY).closePath()
+      .stroke({ color: magenta, alpha: 0.12, width: 0.5 });
+
+    // Bottom lip
+    g.moveTo(x - deckHW, deckY + deckThick)
+      .lineTo(x, deckY + deckHD + deckThick)
+      .lineTo(x + deckHW, deckY + deckThick)
+      .stroke({ color: accent, alpha: 0.18, width: 1 });
+
+    // Window dots around the deck rim — two rows
+    for (let row = 0; row < 2; row++) {
+      const windowCount = row === 0 ? 14 : 8;
+      const yOff = row * 3;
+      const scale = row === 0 ? 1 : 0.7;
+      const hw = deckHW * scale;
+      const hd = deckHD * scale;
+      for (let i = 0; i < windowCount; i++) {
+        const t = (i + 0.5) / windowCount;
+        let wx: number, wy: number;
+        if (t < 0.25) {
+          const f = t / 0.25;
+          wx = x + hw * f;
+          wy = deckY - hd + hd * f;
+        } else if (t < 0.5) {
+          const f = (t - 0.25) / 0.25;
+          wx = x + hw * (1 - f);
+          wy = deckY + hd * f;
+        } else if (t < 0.75) {
+          const f = (t - 0.5) / 0.25;
+          wx = x - hw * f;
+          wy = deckY + hd * (1 - f);
+        } else {
+          const f = (t - 0.75) / 0.25;
+          wx = x - hw * (1 - f);
+          wy = deckY - hd * f;
+        }
+        const wColor = row === 0 ? 0xffd93d : 0x00fff5;
+        g.circle(wx, wy + 2 + yOff, row === 0 ? 1.2 : 0.8)
+          .fill({ color: wColor, alpha: 0.30 });
+      }
+    }
+
+    // === Top spire / antenna — multi-segment with accent rings ===
+    const spireBase = deckY - deckHD;
+    // Main spire shaft
+    g.moveTo(x, spireBase).lineTo(x, spireTopY)
+      .stroke({ color: steelGray, alpha: alpha * 0.9, width: 2 });
+    // Accent glow along spire
+    g.moveTo(x, spireBase).lineTo(x, spireTopY)
+      .stroke({ color: accent, alpha: 0.10, width: 4 });
+
+    // Accent rings along spire
+    const ringCount = 4;
+    for (let i = 0; i < ringCount; i++) {
+      const t = (i + 1) / (ringCount + 1);
+      const ry = spireBase + (spireTopY - spireBase) * t;
+      const rw = 3 - i * 0.5;
+      g.moveTo(x - rw, ry).lineTo(x + rw, ry)
+        .stroke({ color: i % 2 === 0 ? accent : magenta, alpha: 0.25, width: 1 });
+    }
+
+    // Antenna tip finial
+    g.circle(x, spireTopY, 1.5)
+      .fill({ color: steelGray, alpha: alpha * 0.8 });
+  }
+
   triggerPowerPill(): void {
     this.powerPillTimer = 8; // 8 seconds of frightened ghosts
+  }
+
+  triggerUfoAttack(): void {
+    this.ufoTimer = 8;
+    this.ufoPhase = 0;
   }
 
   update(dt: number): void {
@@ -854,6 +1104,19 @@ export class Cityscape extends Container {
       }
     }
 
+    // UFO attack effect
+    this.ufoAttack.clear();
+    if (this.ufoTimer > 0) {
+      this.ufoTimer -= dt * (1 / 60);
+      this.ufoPhase += dt * (1 / 60);
+      if (this.ufoTimer <= 0) {
+        this.ufoTimer = 0;
+        this.ufoPhase = 0;
+      } else {
+        this.drawUfoAttack();
+      }
+    }
+
     // Warning lights — slow pulse
     this.warningLights.clear();
     const lightAlpha = 0.03 + Math.sin(this.elapsed * 1.2) * 0.02;
@@ -863,6 +1126,61 @@ export class Cityscape extends Container {
       this.warningLights
         .circle(pos.x, pos.y - b.height - b.depth / 2 - 2, 1.5)
         .fill({ color: 0xff2200, alpha: lightAlpha });
+    }
+
+    // Space Needle beacon
+    this.spaceNeedleBeacon.clear();
+    {
+      const snPos = isoProject(0, -0.8, this.centerX, this.centerY);
+      const snX = snPos.x;
+      const snY = snPos.y;
+      const totalH = 120;
+      const spireTopY = snY - totalH;
+      const deckY = snY - totalH * 0.62;
+      const deckHW = 22;
+      const deckHD = 10;
+
+      // Pulsing red beacon at antenna tip
+      const beaconPulse = 0.15 + Math.sin(this.elapsed * 1.8) * 0.12;
+      this.spaceNeedleBeacon
+        .circle(snX, spireTopY, 2.5)
+        .fill({ color: 0xff2200, alpha: beaconPulse });
+      // Beacon glow halo
+      this.spaceNeedleBeacon
+        .circle(snX, spireTopY, 7)
+        .fill({ color: 0xff2200, alpha: beaconPulse * 0.25 });
+
+      // Secondary beacon rings along spire
+      const spireBase = deckY - deckHD;
+      for (let i = 0; i < 4; i++) {
+        const t = (i + 1) / 5;
+        const ry = spireBase + (spireTopY - spireBase) * t;
+        const ringPulse = 0.06 + Math.sin(this.elapsed * 1.2 + i * 1.5) * 0.04;
+        this.spaceNeedleBeacon
+          .circle(snX, ry, 2)
+          .fill({ color: i % 2 === 0 ? 0x00fff5 : 0xff00ff, alpha: ringPulse });
+      }
+
+      // Observation deck glow pulse
+      const deckGlow = 0.05 + Math.sin(this.elapsed * 0.8) * 0.03;
+      this.spaceNeedleBeacon
+        .poly([
+          snX, deckY - deckHD,
+          snX + deckHW, deckY,
+          snX, deckY + deckHD,
+          snX - deckHW, deckY,
+        ])
+        .fill({ color: 0x00fff5, alpha: deckGlow });
+
+      // Underside glow pulse (magenta)
+      const underGlow = 0.03 + Math.sin(this.elapsed * 1.0 + 1) * 0.02;
+      this.spaceNeedleBeacon
+        .poly([
+          snX - deckHW * 0.6, deckY + 7,
+          snX, deckY + deckHD + 8,
+          snX + deckHW * 0.6, deckY + 7,
+        ])
+        .fill({ color: 0xff00ff, alpha: underGlow });
     }
 
     // Neon signs — pulse
@@ -905,6 +1223,104 @@ export class Cityscape extends Container {
       this.neonPools
         .ellipse(pos.x, pos.y, pool.rx, pool.ry)
         .fill({ color: pool.color, alpha: pulse });
+    }
+
+    // Mystery data crystals
+    this.mysteryData.clear();
+    for (const md of MYSTERY_DATA) {
+      const pos = isoProject(md.gridX, md.gridY, this.centerX, this.centerY);
+      const spin = Math.sin(this.elapsed * md.freq);
+      const halfW = md.size * 0.5 * Math.abs(spin); // simulate Y-axis rotation
+      const bob = Math.sin(this.elapsed * 1.5 + md.gridX * 2 + md.gridY) * 3;
+      const cx = pos.x;
+      const cy = pos.y - md.size - 2 + bob;
+
+      // Ground shadow
+      this.mysteryData
+        .ellipse(pos.x, pos.y, 4 + halfW * 0.5, 2)
+        .fill({ color: 0x000000, alpha: 0.10 });
+
+      // Pulsing glow behind crystal
+      const glowPulse = 0.08 + Math.sin(this.elapsed * md.freq * 2) * 0.04;
+      this.mysteryData
+        .circle(cx, cy, md.size * 1.2)
+        .fill({ color: md.color, alpha: glowPulse });
+
+      // Top half — brighter
+      this.mysteryData
+        .poly([cx, cy - md.size, cx + halfW, cy, cx, cy + 1, cx - halfW, cy])
+        .fill({ color: md.color, alpha: 0.55 });
+
+      // Bottom half — darker
+      this.mysteryData
+        .poly([cx, cy, cx + halfW, cy, cx, cy + md.size, cx - halfW, cy])
+        .fill({ color: shade(md.color, 0.5), alpha: 0.45 });
+
+      // Edge highlights
+      if (halfW > 1) {
+        this.mysteryData
+          .moveTo(cx, cy - md.size).lineTo(cx + halfW, cy)
+          .stroke({ color: 0xffffff, alpha: 0.15, width: 0.5 })
+          .moveTo(cx, cy - md.size).lineTo(cx - halfW, cy)
+          .stroke({ color: 0xffffff, alpha: 0.10, width: 0.5 })
+          .moveTo(cx + halfW, cy).lineTo(cx, cy + md.size)
+          .stroke({ color: 0xffffff, alpha: 0.08, width: 0.5 })
+          .moveTo(cx - halfW, cy).lineTo(cx, cy + md.size)
+          .stroke({ color: 0xffffff, alpha: 0.06, width: 0.5 });
+      }
+    }
+
+    // Arcade digital banner
+    this.arcadeBanner.clear();
+    {
+      const aPos = isoProject(1.5, -0.8, this.centerX, this.centerY);
+      const ax = aPos.x;
+      const ay = aPos.y;
+      const ahw = 16;
+      const ahd = 11;
+      const ah = 44;
+      // Top face diamond corners
+      const topN = { x: ax, y: ay - ah - ahd };        // north
+      const topE = { x: ax + ahw, y: ay - ah };         // east
+      const topS = { x: ax, y: ay - ah + ahd };         // south
+      const topW = { x: ax - ahw, y: ay - ah };         // west
+
+      // Scroll colored segments across the top face
+      const segCount = 6;
+      const scrollSpeed = 0.4;
+      const bannerColors = [0xff0000, 0xffff00, 0x00ff64, 0x00fff5, 0xff00ff, 0xff8800];
+      for (let s = 0; s < segCount; s++) {
+        const t0 = ((s / segCount) + this.elapsed * scrollSpeed) % 1;
+        const t1 = (((s + 1) / segCount) + this.elapsed * scrollSpeed) % 1;
+        if (t1 < t0) continue; // skip wrap-around segment
+
+        // Interpolate along the top diamond: go N→E→S→W→N parametrically
+        // Use simple left-right interpolation: t=0 is west edge, t=1 is east edge
+        const lerp = (a: {x:number;y:number}, b: {x:number;y:number}, f: number) => ({
+          x: a.x + (b.x - a.x) * f,
+          y: a.y + (b.y - a.y) * f,
+        });
+
+        // Top edge: W → N → E (t 0→0.5→1)
+        const topAt = (t: number) => {
+          if (t < 0.5) return lerp(topW, topN, t * 2);
+          return lerp(topN, topE, (t - 0.5) * 2);
+        };
+        // Bottom edge: W → S → E (t 0→0.5→1)
+        const botAt = (t: number) => {
+          if (t < 0.5) return lerp(topW, topS, t * 2);
+          return lerp(topS, topE, (t - 0.5) * 2);
+        };
+
+        const p0t = topAt(t0);
+        const p1t = topAt(t1);
+        const p0b = botAt(t0);
+        const p1b = botAt(t1);
+
+        this.arcadeBanner
+          .poly([p0t.x, p0t.y, p1t.x, p1t.y, p1b.x, p1b.y, p0b.x, p0b.y])
+          .fill({ color: bannerColors[s % bannerColors.length], alpha: 0.18 });
+      }
     }
 
     // NetNavi — idle + walk
@@ -1057,6 +1473,132 @@ export class Cityscape extends Container {
       this.navi
         .poly([x, this.naviScreenY - 4, x + 8, this.naviScreenY, x, this.naviScreenY + 4, x - 8, this.naviScreenY])
         .fill({ color: 0x00fff5, alpha: glowPulse });
+    }
+  }
+
+  private drawUfoAttack(): void {
+    const g = this.ufoAttack;
+    const snPos = isoProject(0, -0.8, this.centerX, this.centerY);
+    const snX = snPos.x;
+    const snY = snPos.y;
+    const totalH = 120;
+    const spireTopY = snY - totalH;
+    const deckY = snY - totalH * 0.62;
+
+    const duration = 8;
+    const t = this.ufoPhase / duration; // 0 to 1
+
+    // UFO hover position (above spire)
+    const hoverX = snX;
+    const hoverY = spireTopY - 30;
+
+    // UFO position based on phase
+    let ufoX: number, ufoY: number;
+    let laserAlpha = 0;
+
+    if (t < 0.25) {
+      // Approach from upper-right
+      const approach = t / 0.25;
+      const ease = approach < 0.5 ? 2 * approach * approach : 1 - Math.pow(-2 * approach + 2, 2) / 2;
+      const startX = snX + Math.min(250, this.screenWidth * 0.35);
+      const startY = spireTopY - Math.min(150, this.screenHeight * 0.25);
+      ufoX = startX + (hoverX - startX) * ease;
+      ufoY = startY + (hoverY - startY) * ease;
+    } else if (t < 0.75) {
+      // Hovering and attacking
+      const hover = (t - 0.25) / 0.5;
+      ufoX = hoverX + Math.sin(this.ufoPhase * 2) * 3;
+      ufoY = hoverY + Math.sin(this.ufoPhase * 1.5) * 2;
+      // Lasers ramp up then hold
+      laserAlpha = Math.min(1, hover * 3);
+    } else {
+      // Retreat to upper-left
+      const retreat = (t - 0.75) / 0.25;
+      const ease = retreat < 0.5 ? 2 * retreat * retreat : 1 - Math.pow(-2 * retreat + 2, 2) / 2;
+      const endX = snX - Math.min(280, this.screenWidth * 0.4);
+      const endY = spireTopY - Math.min(180, this.screenHeight * 0.3);
+      ufoX = hoverX + (endX - hoverX) * ease;
+      ufoY = hoverY + (endY - hoverY) * ease;
+      laserAlpha = Math.max(0, 1 - retreat * 4);
+    }
+
+    // Overall fade for approach/retreat
+    const fadeAlpha = t < 0.1 ? t / 0.1 : t > 0.9 ? (1 - t) / 0.1 : 1;
+
+    // === Draw UFO saucer ===
+    const saucerW = 20;
+    const saucerH = 6;
+
+    // Underside glow
+    g.ellipse(ufoX, ufoY + saucerH * 0.3, saucerW * 0.7, saucerH * 1.5)
+      .fill({ color: 0x44ffaa, alpha: 0.06 * fadeAlpha });
+
+    // Main body — dark metallic ellipse
+    g.ellipse(ufoX, ufoY, saucerW, saucerH)
+      .fill({ color: 0x334455, alpha: 0.7 * fadeAlpha });
+    g.ellipse(ufoX, ufoY, saucerW, saucerH)
+      .stroke({ color: 0x556677, alpha: 0.4 * fadeAlpha, width: 1 });
+
+    // Dome on top
+    g.ellipse(ufoX, ufoY - saucerH * 0.6, saucerW * 0.4, saucerH * 0.7)
+      .fill({ color: 0x667788, alpha: 0.6 * fadeAlpha });
+    g.ellipse(ufoX, ufoY - saucerH * 0.6, saucerW * 0.4, saucerH * 0.7)
+      .stroke({ color: 0x88aacc, alpha: 0.3 * fadeAlpha, width: 0.5 });
+
+    // Cycling colored lights underneath
+    const lightCount = 7;
+    for (let i = 0; i < lightCount; i++) {
+      const angle = (i / lightCount) * Math.PI * 2 + this.ufoPhase * 3;
+      const lx = ufoX + Math.cos(angle) * saucerW * 0.7;
+      const ly = ufoY + Math.sin(angle) * saucerH * 0.5 + saucerH * 0.3;
+      const lightColors = [0xff0000, 0x00ff00, 0x0088ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800];
+      const ci = (i + Math.floor(this.ufoPhase * 5)) % lightColors.length;
+      g.circle(lx, ly, 1.2)
+        .fill({ color: lightColors[ci], alpha: 0.5 * fadeAlpha });
+    }
+
+    // === Laser beams (only during attack phase) ===
+    if (laserAlpha > 0) {
+      const beamTargets = [
+        { x: snX - 8, y: deckY },
+        { x: snX, y: deckY - 3 },
+        { x: snX + 8, y: deckY },
+      ];
+
+      for (let i = 0; i < beamTargets.length; i++) {
+        const target = beamTargets[i];
+        const wobble = Math.sin(this.ufoPhase * 6 + i * 2.1) * 2;
+        const tx = target.x + wobble;
+        const ty = target.y;
+
+        // Wide glow beam
+        g.moveTo(ufoX, ufoY + saucerH)
+          .lineTo(tx, ty)
+          .stroke({ color: 0xff00ff, alpha: 0.12 * laserAlpha * fadeAlpha, width: 6 });
+
+        // Bright core beam
+        g.moveTo(ufoX, ufoY + saucerH)
+          .lineTo(tx, ty)
+          .stroke({ color: 0xff2244, alpha: 0.5 * laserAlpha * fadeAlpha, width: 2 });
+
+        // Impact glow on deck
+        const impactPulse = 0.3 + Math.sin(this.ufoPhase * 8 + i * 1.5) * 0.15;
+        g.circle(tx, ty, 5)
+          .fill({ color: 0xff4400, alpha: impactPulse * laserAlpha * fadeAlpha });
+        g.circle(tx, ty, 10)
+          .fill({ color: 0xff2200, alpha: impactPulse * 0.3 * laserAlpha * fadeAlpha });
+
+        // Sparks at impact
+        const sparkCount = 3;
+        for (let s = 0; s < sparkCount; s++) {
+          const sparkAngle = this.ufoPhase * 10 + i * 3 + s * 2.1;
+          const sparkDist = 4 + Math.sin(sparkAngle * 1.7) * 3;
+          const sx = tx + Math.cos(sparkAngle) * sparkDist;
+          const sy = ty + Math.sin(sparkAngle) * sparkDist * 0.5 - Math.abs(Math.sin(sparkAngle * 2)) * 4;
+          g.circle(sx, sy, 0.8)
+            .fill({ color: 0xffaa00, alpha: 0.4 * laserAlpha * fadeAlpha });
+        }
+      }
     }
   }
 

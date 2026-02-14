@@ -52,6 +52,7 @@ export class MapScene {
         () => this.ambient.triggerDove(),
         () => this.ambient.triggerTears(),
         () => this.cityscape.triggerPowerPill(),
+        () => this.cityscape.triggerUfoAttack(),
       ];
       effects[this.eggIndex % effects.length]();
       this.eggIndex++;
