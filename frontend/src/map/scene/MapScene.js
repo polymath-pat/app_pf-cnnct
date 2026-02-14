@@ -46,6 +46,7 @@ export class MapScene {
                 () => this.bladeRunnerEggs.triggerVkFlash(),
                 () => this.ambient.triggerDove(),
                 () => this.ambient.triggerTears(),
+                () => this.cityscape.triggerPowerPill(),
             ];
             effects[this.eggIndex % effects.length]();
             this.eggIndex++;

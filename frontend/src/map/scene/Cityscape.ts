@@ -181,6 +181,8 @@ export class Cityscape extends Container {
   private roads = new Graphics();
   private decorativeBuildings = new Graphics();
   private peripheralBuildings = new Graphics();
+  private arcade = new Graphics();
+  private arcadeGhosts = new Graphics();
   private trees = new Graphics();
   private neonPools = new Graphics();
   private neonSigns = new Graphics();
@@ -211,11 +213,16 @@ export class Cityscape extends Container {
   private naviScreenY = 0;
   private naviFacingRight = true;
 
+  // Power pill ghost effect
+  private powerPillTimer = 0; // seconds remaining, 0 = off
+
   constructor() {
     super();
     this.addChild(this.roads);
     this.addChild(this.decorativeBuildings);
     this.addChild(this.peripheralBuildings);
+    this.addChild(this.arcade);
+    this.addChild(this.arcadeGhosts);
     this.addChild(this.trees);
     this.addChild(this.neonPools);
     this.addChild(this.neonSigns);
@@ -263,6 +270,7 @@ export class Cityscape extends Container {
     this.drawRoads();
     this.drawDecorativeBuildings();
     this.drawPeripheralBuildings();
+    this.drawArcade();
     this.drawTrees();
     // Recompute neon sign screen positions
     for (const sign of this.neonSignDefs) {
@@ -671,8 +679,180 @@ export class Cityscape extends Container {
     }
   }
 
+  private drawArcade(): void {
+    this.arcade.clear();
+    const g = this.arcade;
+    const pos = isoProject(1.5, -0.8, this.centerX, this.centerY);
+    const x = pos.x;
+    const y = pos.y;
+    const hw = 16;
+    const hd = 11;
+    const h = 44;
+    const alpha = 0.42;
+    const bodyColor = 0x0d1520;
+    const accentColor = 0xffff00;
+
+    // Use the same flat-top building as other decorative buildings
+    this.drawFlatTop(g, x, y, hw, hd, h, bodyColor, alpha, accentColor);
+
+    // Window grid on both faces (same as other decorative buildings)
+    const seed = 8888;
+    this.drawWindowGrid(g, x, y, hw, hd, h, 'left', seed);
+    this.drawWindowGrid(g, x, y, hw, hd, h, 'right', seed + 999);
+
+    // Neon stripe bands (yellow, matching accent)
+    for (const frac of [0.18, 0.82]) {
+      const stripeY = y - h + h * frac;
+      const ly1 = stripeY + hd * 1;
+      const ly2 = stripeY + hd * 0;
+      g.poly([x - hw, ly2, x, ly1, x, ly1 + 2, x - hw, ly2 + 2])
+        .fill({ color: accentColor, alpha: 0.22 });
+    }
+
+    // Rooftop antenna
+    const topY = y - h - hd;
+    g.moveTo(x, topY).lineTo(x, topY - 6)
+      .stroke({ color: 0x445566, alpha: 0.30, width: 1 });
+    g.circle(x, topY - 6, 1)
+      .fill({ color: 0xffff00, alpha: 0.30 });
+
+    // === LEFT FACE: Pac-Man mural ===
+    // Helper to get a point on the left face: u=0..1 (left edge to center), v=0..1 (top to bottom)
+    const leftFacePoint = (u: number, v: number) => {
+      const faceTop = y - h;
+      const faceBot = y;
+      const py = faceTop + (faceBot - faceTop) * v;
+      // Left edge is at (x-hw, py), right edge at (x, py+hd)
+      const px = (x - hw) + (hw) * u;
+      const skew = hd * (1 - u) + hd * u * 0; // iso skew: left edge has +hd offset, right edge has 0
+      return { x: px, y: py + hd * (1 - u) };
+    };
+
+    // Pac-Man — centered on left face at ~40% from top
+    const pac = leftFacePoint(0.5, 0.40);
+    const pacR = 5;
+    const pacAlpha = 0.50;
+    g.circle(pac.x, pac.y, pacR)
+      .fill({ color: 0xffff00, alpha: pacAlpha });
+    // Mouth cut-out (wedge pointing right along face)
+    const mouthDx = hw * 0.04; // slight iso direction
+    g.poly([
+      pac.x, pac.y,
+      pac.x + pacR * 0.9 + mouthDx, pac.y - pacR * 0.5,
+      pac.x + pacR * 0.9 + mouthDx, pac.y + pacR * 0.5,
+    ]).fill({ color: shade(bodyColor, 0.4), alpha });
+    // Eye
+    g.circle(pac.x + 1, pac.y - pacR * 0.35, 0.8)
+      .fill({ color: 0x0a0a1e, alpha: 0.6 });
+
+    // Pac-dots trail (going left/down along face)
+    for (let d = 1; d <= 3; d++) {
+      const dot = leftFacePoint(0.5 - d * 0.12, 0.40 + d * 0.03);
+      g.circle(dot.x, dot.y, 1)
+        .fill({ color: 0xffff00, alpha: 0.40 });
+    }
+    // Power pellet
+    const pellet = leftFacePoint(0.12, 0.48);
+    g.circle(pellet.x, pellet.y, 1.8)
+      .fill({ color: 0xffff00, alpha: 0.50 });
+
+    // Draw ghosts on separate layer (so they can be redrawn for power pill)
+    this.drawArcadeGhosts(false);
+  }
+
+  private drawArcadeGhosts(frightened: boolean): void {
+    this.arcadeGhosts.clear();
+    const g = this.arcadeGhosts;
+    const pos = isoProject(1.5, -0.8, this.centerX, this.centerY);
+    const x = pos.x;
+    const y = pos.y;
+    const hw = 16;
+    const hd = 11;
+    const h = 44;
+
+    const rightFacePoint = (u: number, v: number) => {
+      const faceTop = y - h;
+      const faceBot = y;
+      const py = faceTop + (faceBot - faceTop) * v;
+      const px = x + hw * u;
+      return { x: px, y: py + hd * u };
+    };
+
+    const normalColors = [0xff0000, 0xffb8ff, 0x00ffff, 0xffb852]; // Blinky, Pinky, Inky, Clyde
+    const frightenedColor = 0x2222dd;
+    const frightenedFlash = this.powerPillTimer < 2 && this.powerPillTimer > 0;
+
+    for (let gi = 0; gi < 4; gi++) {
+      const u = 0.15 + gi * 0.20;
+      // When frightened and flashing (last 2s), alternate white/blue
+      let gc: number;
+      if (frightened) {
+        gc = (frightenedFlash && Math.floor(this.elapsed * 8) % 2 === 0) ? 0xffffff : frightenedColor;
+      } else {
+        gc = normalColors[gi];
+      }
+      const ga = 0.45;
+      const gp = rightFacePoint(u, 0.38 + gi * 0.02);
+      const gw = 4;
+      const gh = 5.5;
+
+      // Head (rounded rect)
+      g.roundRect(gp.x - gw / 2, gp.y - gh, gw, gh * 0.7, 2)
+        .fill({ color: gc, alpha: ga });
+      // Body skirt
+      g.rect(gp.x - gw / 2, gp.y - gh * 0.4, gw, gh * 0.4)
+        .fill({ color: gc, alpha: ga });
+      // Wavy bottom — 3 bumps
+      const bw = gw / 3;
+      for (let b = 0; b < 3; b++) {
+        g.circle(gp.x - gw / 2 + bw * b + bw / 2, gp.y, bw / 2)
+          .fill({ color: gc, alpha: ga });
+      }
+      // Eyes — frightened ghosts get wavy mouth + small dot eyes
+      const eo = gw * 0.17;
+      if (frightened) {
+        // Dot eyes
+        g.circle(gp.x - eo, gp.y - gh * 0.55, 0.7)
+          .fill({ color: 0xffcccc, alpha: ga });
+        g.circle(gp.x + eo, gp.y - gh * 0.55, 0.7)
+          .fill({ color: 0xffcccc, alpha: ga });
+        // Wavy frown mouth
+        g.moveTo(gp.x - gw * 0.3, gp.y - gh * 0.3)
+          .lineTo(gp.x - gw * 0.15, gp.y - gh * 0.35)
+          .lineTo(gp.x, gp.y - gh * 0.3)
+          .lineTo(gp.x + gw * 0.15, gp.y - gh * 0.35)
+          .lineTo(gp.x + gw * 0.3, gp.y - gh * 0.3)
+          .stroke({ color: 0xffcccc, alpha: ga, width: 0.5 });
+      } else {
+        // Normal white eyes with blue pupils
+        g.circle(gp.x - eo, gp.y - gh * 0.55, 1.1)
+          .fill({ color: 0xffffff, alpha: ga });
+        g.circle(gp.x + eo, gp.y - gh * 0.55, 1.1)
+          .fill({ color: 0xffffff, alpha: ga });
+        g.circle(gp.x - eo + 0.3, gp.y - gh * 0.55, 0.6)
+          .fill({ color: 0x2222ff, alpha: ga });
+        g.circle(gp.x + eo + 0.3, gp.y - gh * 0.55, 0.6)
+          .fill({ color: 0x2222ff, alpha: ga });
+      }
+    }
+  }
+
+  triggerPowerPill(): void {
+    this.powerPillTimer = 8; // 8 seconds of frightened ghosts
+  }
+
   update(dt: number): void {
     this.elapsed += dt * 0.02;
+
+    // Power pill ghost effect
+    if (this.powerPillTimer > 0) {
+      this.powerPillTimer -= dt * (1 / 60);
+      this.drawArcadeGhosts(true);
+      if (this.powerPillTimer <= 0) {
+        this.powerPillTimer = 0;
+        this.drawArcadeGhosts(false);
+      }
+    }
 
     // Warning lights — slow pulse
     this.warningLights.clear();
