@@ -111,6 +111,12 @@ const DECORATIVE_BUILDINGS: DecorativeDef[] = [
   { gridX: 4.0,  gridY: 2.5, width: 18, depth: 14, height: 40, color: 0x15191f, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(3) },
   { gridX: 0.5,  gridY: 3.0, width: 16, depth: 12, height: 34, color: 0x0d1520, alpha: 0.40, style: 'flat',    accentColor: pickAccent(4) },
   { gridX: 3.5,  gridY: 4.2, width: 20, depth: 14, height: 38, color: 0x1a1f2e, alpha: 0.36, style: 'stepped', accentColor: pickAccent(5) },
+  // Space Needle neighborhood
+  { gridX: -0.6, gridY: -0.4, width: 14, depth: 10, height: 30, color: 0x0d1520, alpha: 0.40, style: 'flat',    accentColor: pickAccent(6) },
+  { gridX: 0.6,  gridY: -1.2, width: 16, depth: 12, height: 36, color: 0x1a1f2e, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(7) },
+  { gridX: -0.8, gridY: -1.0, width: 12, depth: 10, height: 24, color: 0x252a3a, alpha: 0.42, style: 'stepped', accentColor: pickAccent(0) },
+  { gridX: 0.5,  gridY: -0.2, width: 14, depth: 10, height: 28, color: 0x15191f, alpha: 0.40, style: 'flat',    accentColor: pickAccent(1) },
+  { gridX: -0.4, gridY: -1.4, width: 10, depth: 8,  height: 20, color: 0x0d1520, alpha: 0.38, style: 'wedge',   accentColor: pickAccent(2) },
 ];
 
 const TREE_POSITIONS = [
@@ -118,6 +124,9 @@ const TREE_POSITIONS = [
   { gridX: 3.1, gridY: 0.7 }, { gridX: 3.9, gridY: 1.8 }, { gridX: 4.2, gridY: 3.2 },
   { gridX: 0.5, gridY: 4.8 }, { gridX: 2.8, gridY: 4.1 }, { gridX: 5.1, gridY: 1.2 },
   { gridX: 5.7, gridY: 3.8 }, { gridX: -0.5, gridY: 2.5 }, { gridX: 1.2, gridY: 3.9 },
+  // Space Needle park trees
+  { gridX: -0.3, gridY: -0.6 }, { gridX: 0.3, gridY: -0.5 }, { gridX: -0.1, gridY: -1.1 },
+  { gridX: 0.4, gridY: -0.9 }, { gridX: -0.5, gridY: -0.1 },
 ];
 
 const ROAD_SEGMENTS: [number, number, number, number][] = [
@@ -146,6 +155,8 @@ const NEON_POOL_DEFS: NeonPool[] = [
   { gridX: 0, gridY: 4, rx: 16, ry: 8,  color: 0xff00ff, freq: 2.0 },
   { gridX: 4, gridY: 4, rx: 20, ry: 10, color: 0xffd93d, freq: 1.1 },
   { gridX: 2, gridY: 0, rx: 18, ry: 9,  color: 0x00ff64, freq: 1.6 },
+  // Space Needle park pool
+  { gridX: 0, gridY: -0.3, rx: 14, ry: 7,  color: 0x44aaff, freq: 1.4 },
 ];
 
 interface MysteryDataDef {
@@ -199,6 +210,8 @@ export class Cityscape extends Container {
   private peripheralBuildings = new Graphics();
   private arcade = new Graphics();
   private arcadeGhosts = new Graphics();
+  private spaceNeedle = new Graphics();
+  private spaceNeedleBeacon = new Graphics();
   private trees = new Graphics();
   private neonPools = new Graphics();
   private neonSigns = new Graphics();
@@ -241,6 +254,8 @@ export class Cityscape extends Container {
     this.addChild(this.peripheralBuildings);
     this.addChild(this.arcade);
     this.addChild(this.arcadeGhosts);
+    this.addChild(this.spaceNeedle);
+    this.addChild(this.spaceNeedleBeacon);
     this.addChild(this.trees);
     this.addChild(this.neonPools);
     this.addChild(this.mysteryData);
@@ -291,6 +306,7 @@ export class Cityscape extends Container {
     this.drawDecorativeBuildings();
     this.drawPeripheralBuildings();
     this.drawArcade();
+    this.drawSpaceNeedle();
     this.drawTrees();
     // Recompute neon sign screen positions
     for (const sign of this.neonSignDefs) {
@@ -857,6 +873,209 @@ export class Cityscape extends Container {
     }
   }
 
+  private drawSpaceNeedle(): void {
+    this.spaceNeedle.clear();
+    const g = this.spaceNeedle;
+    const pos = isoProject(0, -0.8, this.centerX, this.centerY);
+    const x = pos.x;
+    const y = pos.y;
+    const alpha = 0.50;
+    const steelGray = 0x8899aa;
+    const darkShaft = 0x556677;
+    const accent = 0x00fff5;
+    const magenta = 0xff00ff;
+
+    // Total height ~120px — taller and more prominent
+    const totalH = 120;
+    const baseY = y;
+    const legTopY = baseY - totalH * 0.28;
+    const deckY = baseY - totalH * 0.62;
+    const spireTopY = baseY - totalH;
+
+    // === Ground shadow (drawn first, behind everything) ===
+    g.ellipse(x, baseY + 2, 16, 6)
+      .fill({ color: 0x000000, alpha: 0.10 });
+
+    // === Base platform — isometric diamond pad ===
+    const padHW = 16;
+    const padHD = 7;
+    g.poly([x, baseY - padHD, x + padHW, baseY, x, baseY + padHD, x - padHW, baseY])
+      .fill({ color: 0x1a2a3f, alpha: 0.30 });
+    g.moveTo(x, baseY - padHD).lineTo(x + padHW, baseY)
+      .lineTo(x, baseY + padHD).lineTo(x - padHW, baseY).closePath()
+      .stroke({ color: accent, alpha: 0.18, width: 1 });
+
+    // === Tripod legs with structural cross-bracing ===
+    const legSpread = 16;
+    // Outer legs — thicker, gradient feel via double stroke
+    for (const [lx, ly] of [[x - legSpread, baseY], [x + legSpread, baseY], [x, baseY + 5]] as [number, number][]) {
+      // Glow stroke behind
+      g.moveTo(lx, ly).lineTo(x + (lx === x ? 0 : (lx < x ? 1 : -1)), legTopY)
+        .stroke({ color: accent, alpha: 0.08, width: 4 });
+      // Main steel stroke
+      g.moveTo(lx, ly).lineTo(x + (lx === x ? 0 : (lx < x ? 1 : -1)), legTopY)
+        .stroke({ color: steelGray, alpha, width: 2 });
+      // Foot accent
+      g.circle(lx, ly, 2)
+        .fill({ color: accent, alpha: 0.20 });
+    }
+
+    // Cross-bracing between legs (structural diamond pattern)
+    const braceCount = 3;
+    for (let i = 1; i <= braceCount; i++) {
+      const t = i / (braceCount + 1);
+      const brY = baseY + (legTopY - baseY) * t;
+      const spread = legSpread * (1 - t);
+      g.moveTo(x - spread, brY).lineTo(x + spread, brY)
+        .stroke({ color: darkShaft, alpha: alpha * 0.5, width: 0.8 });
+      // X cross
+      if (i < braceCount) {
+        const t2 = (i + 1) / (braceCount + 1);
+        const brY2 = baseY + (legTopY - baseY) * t2;
+        const spread2 = legSpread * (1 - t2);
+        g.moveTo(x - spread, brY).lineTo(x + spread2, brY2)
+          .stroke({ color: darkShaft, alpha: alpha * 0.3, width: 0.5 });
+        g.moveTo(x + spread, brY).lineTo(x - spread2, brY2)
+          .stroke({ color: darkShaft, alpha: alpha * 0.3, width: 0.5 });
+      }
+    }
+
+    // === Central shaft — tapered with neon accent strips ===
+    const shaftTop = deckY + 8;
+    const shaftBot = legTopY;
+    const shaftW = 2;
+    g.poly([
+      x - shaftW - 1, shaftBot,
+      x + shaftW + 1, shaftBot,
+      x + shaftW, shaftTop,
+      x - shaftW, shaftTop,
+    ]).fill({ color: darkShaft, alpha });
+    // Neon accent strips running up shaft
+    g.moveTo(x - shaftW, shaftBot).lineTo(x - shaftW, shaftTop)
+      .stroke({ color: accent, alpha: 0.20, width: 0.8 });
+    g.moveTo(x + shaftW, shaftBot).lineTo(x + shaftW, shaftTop)
+      .stroke({ color: magenta, alpha: 0.15, width: 0.8 });
+
+    // === Observation deck — wider, multi-layered saucer ===
+    const deckHW = 22;
+    const deckHD = 10;
+    const deckThick = 6;
+
+    // Deck underside glow (drawn before deck so it's behind)
+    g.poly([
+      x - deckHW * 0.8, deckY + deckThick + 1,
+      x, deckY + deckHD + deckThick + 2,
+      x + deckHW * 0.8, deckY + deckThick + 1,
+    ]).fill({ color: accent, alpha: 0.06 });
+
+    // Main deck top surface
+    g.poly([
+      x, deckY - deckHD,
+      x + deckHW, deckY,
+      x, deckY + deckHD,
+      x - deckHW, deckY,
+    ]).fill({ color: shade(steelGray, 0.95), alpha: alpha * 1.1 });
+
+    // Inner ring on top face (restaurant level)
+    const innerHW = deckHW * 0.55;
+    const innerHD = deckHD * 0.55;
+    g.poly([
+      x, deckY - innerHD,
+      x + innerHW, deckY,
+      x, deckY + innerHD,
+      x - innerHW, deckY,
+    ]).fill({ color: shade(steelGray, 1.1), alpha: alpha * 0.6 });
+    g.moveTo(x, deckY - innerHD).lineTo(x + innerHW, deckY)
+      .lineTo(x, deckY + innerHD).lineTo(x - innerHW, deckY).closePath()
+      .stroke({ color: accent, alpha: 0.18, width: 0.5 });
+
+    // Deck left underside
+    g.poly([
+      x - deckHW, deckY,
+      x, deckY + deckHD,
+      x, deckY + deckHD + deckThick,
+      x - deckHW, deckY + deckThick,
+    ]).fill({ color: shade(steelGray, 0.35), alpha });
+
+    // Deck right underside
+    g.poly([
+      x + deckHW, deckY,
+      x, deckY + deckHD,
+      x, deckY + deckHD + deckThick,
+      x + deckHW, deckY + deckThick,
+    ]).fill({ color: shade(steelGray, 0.55), alpha });
+
+    // Deck rim — dual accent edges (cyan outer, magenta inner)
+    g.moveTo(x, deckY - deckHD).lineTo(x + deckHW, deckY)
+      .lineTo(x, deckY + deckHD).lineTo(x - deckHW, deckY).closePath()
+      .stroke({ color: accent, alpha: 0.30, width: 1.5 });
+    g.moveTo(x, deckY - deckHD + 1).lineTo(x + deckHW - 1, deckY)
+      .lineTo(x, deckY + deckHD - 1).lineTo(x - deckHW + 1, deckY).closePath()
+      .stroke({ color: magenta, alpha: 0.12, width: 0.5 });
+
+    // Bottom lip
+    g.moveTo(x - deckHW, deckY + deckThick)
+      .lineTo(x, deckY + deckHD + deckThick)
+      .lineTo(x + deckHW, deckY + deckThick)
+      .stroke({ color: accent, alpha: 0.18, width: 1 });
+
+    // Window dots around the deck rim — two rows
+    for (let row = 0; row < 2; row++) {
+      const windowCount = row === 0 ? 14 : 8;
+      const yOff = row * 3;
+      const scale = row === 0 ? 1 : 0.7;
+      const hw = deckHW * scale;
+      const hd = deckHD * scale;
+      for (let i = 0; i < windowCount; i++) {
+        const t = (i + 0.5) / windowCount;
+        let wx: number, wy: number;
+        if (t < 0.25) {
+          const f = t / 0.25;
+          wx = x + hw * f;
+          wy = deckY - hd + hd * f;
+        } else if (t < 0.5) {
+          const f = (t - 0.25) / 0.25;
+          wx = x + hw * (1 - f);
+          wy = deckY + hd * f;
+        } else if (t < 0.75) {
+          const f = (t - 0.5) / 0.25;
+          wx = x - hw * f;
+          wy = deckY + hd * (1 - f);
+        } else {
+          const f = (t - 0.75) / 0.25;
+          wx = x - hw * (1 - f);
+          wy = deckY - hd * f;
+        }
+        const wColor = row === 0 ? 0xffd93d : 0x00fff5;
+        g.circle(wx, wy + 2 + yOff, row === 0 ? 1.2 : 0.8)
+          .fill({ color: wColor, alpha: 0.30 });
+      }
+    }
+
+    // === Top spire / antenna — multi-segment with accent rings ===
+    const spireBase = deckY - deckHD;
+    // Main spire shaft
+    g.moveTo(x, spireBase).lineTo(x, spireTopY)
+      .stroke({ color: steelGray, alpha: alpha * 0.9, width: 2 });
+    // Accent glow along spire
+    g.moveTo(x, spireBase).lineTo(x, spireTopY)
+      .stroke({ color: accent, alpha: 0.10, width: 4 });
+
+    // Accent rings along spire
+    const ringCount = 4;
+    for (let i = 0; i < ringCount; i++) {
+      const t = (i + 1) / (ringCount + 1);
+      const ry = spireBase + (spireTopY - spireBase) * t;
+      const rw = 3 - i * 0.5;
+      g.moveTo(x - rw, ry).lineTo(x + rw, ry)
+        .stroke({ color: i % 2 === 0 ? accent : magenta, alpha: 0.25, width: 1 });
+    }
+
+    // Antenna tip finial
+    g.circle(x, spireTopY, 1.5)
+      .fill({ color: steelGray, alpha: alpha * 0.8 });
+  }
+
   triggerPowerPill(): void {
     this.powerPillTimer = 8; // 8 seconds of frightened ghosts
   }
@@ -883,6 +1102,61 @@ export class Cityscape extends Container {
       this.warningLights
         .circle(pos.x, pos.y - b.height - b.depth / 2 - 2, 1.5)
         .fill({ color: 0xff2200, alpha: lightAlpha });
+    }
+
+    // Space Needle beacon
+    this.spaceNeedleBeacon.clear();
+    {
+      const snPos = isoProject(0, -0.8, this.centerX, this.centerY);
+      const snX = snPos.x;
+      const snY = snPos.y;
+      const totalH = 120;
+      const spireTopY = snY - totalH;
+      const deckY = snY - totalH * 0.62;
+      const deckHW = 22;
+      const deckHD = 10;
+
+      // Pulsing red beacon at antenna tip
+      const beaconPulse = 0.15 + Math.sin(this.elapsed * 1.8) * 0.12;
+      this.spaceNeedleBeacon
+        .circle(snX, spireTopY, 2.5)
+        .fill({ color: 0xff2200, alpha: beaconPulse });
+      // Beacon glow halo
+      this.spaceNeedleBeacon
+        .circle(snX, spireTopY, 7)
+        .fill({ color: 0xff2200, alpha: beaconPulse * 0.25 });
+
+      // Secondary beacon rings along spire
+      const spireBase = deckY - deckHD;
+      for (let i = 0; i < 4; i++) {
+        const t = (i + 1) / 5;
+        const ry = spireBase + (spireTopY - spireBase) * t;
+        const ringPulse = 0.06 + Math.sin(this.elapsed * 1.2 + i * 1.5) * 0.04;
+        this.spaceNeedleBeacon
+          .circle(snX, ry, 2)
+          .fill({ color: i % 2 === 0 ? 0x00fff5 : 0xff00ff, alpha: ringPulse });
+      }
+
+      // Observation deck glow pulse
+      const deckGlow = 0.05 + Math.sin(this.elapsed * 0.8) * 0.03;
+      this.spaceNeedleBeacon
+        .poly([
+          snX, deckY - deckHD,
+          snX + deckHW, deckY,
+          snX, deckY + deckHD,
+          snX - deckHW, deckY,
+        ])
+        .fill({ color: 0x00fff5, alpha: deckGlow });
+
+      // Underside glow pulse (magenta)
+      const underGlow = 0.03 + Math.sin(this.elapsed * 1.0 + 1) * 0.02;
+      this.spaceNeedleBeacon
+        .poly([
+          snX - deckHW * 0.6, deckY + 7,
+          snX, deckY + deckHD + 8,
+          snX + deckHW * 0.6, deckY + 7,
+        ])
+        .fill({ color: 0xff00ff, alpha: underGlow });
     }
 
     // Neon signs — pulse
