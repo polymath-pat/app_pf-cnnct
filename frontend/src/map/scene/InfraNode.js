@@ -75,6 +75,7 @@ export class InfraNode extends Container {
             },
         });
         this.nameLabel.anchor.set(0.5, 1);
+        this.nameLabel.visible = false;
         this.addChild(this.nameLabel);
         // Tooltip
         this.tooltipName = new Text({

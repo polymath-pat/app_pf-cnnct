@@ -148,6 +148,22 @@ const NEON_POOL_DEFS: NeonPool[] = [
   { gridX: 2, gridY: 0, rx: 18, ry: 9,  color: 0x00ff64, freq: 1.6 },
 ];
 
+interface MysteryDataDef {
+  gridX: number;
+  gridY: number;
+  color: number;
+  size: number;
+  freq: number;
+}
+
+const MYSTERY_DATA: MysteryDataDef[] = [
+  { gridX: 1, gridY: 1.5, color: 0x00ff64, size: 6, freq: 1.5 },
+  { gridX: 3.5, gridY: 1.5, color: 0x4488ff, size: 7, freq: 1.2 },
+  { gridX: 0.5, gridY: 3.5, color: 0xaa44ff, size: 6, freq: 1.8 },
+  { gridX: 4.5, gridY: 0.5, color: 0x00ff64, size: 5, freq: 1.6 },
+  { gridX: 2.5, gridY: 3.8, color: 0x4488ff, size: 6, freq: 1.3 },
+];
+
 const NEON_COLORS = [0x00fff5, 0xff00ff, 0xffd93d, 0x00ff64, 0xff4444, 0xff8800, 0x44aaff, 0xaa66ff];
 
 const WINDOW_COLORS = [0xffd93d, 0xffd93d, 0xffd93d, 0xffd93d, 0x00fff5, 0xff8800];
@@ -186,6 +202,8 @@ export class Cityscape extends Container {
   private trees = new Graphics();
   private neonPools = new Graphics();
   private neonSigns = new Graphics();
+  private mysteryData = new Graphics();
+  private arcadeBanner = new Graphics();
   private warningLights = new Graphics();
   private spinner = new Graphics();
   private navi = new Graphics();
@@ -225,7 +243,9 @@ export class Cityscape extends Container {
     this.addChild(this.arcadeGhosts);
     this.addChild(this.trees);
     this.addChild(this.neonPools);
+    this.addChild(this.mysteryData);
     this.addChild(this.neonSigns);
+    this.addChild(this.arcadeBanner);
     this.addChild(this.warningLights);
     this.addChild(this.navi);
     this.addChild(this.spinner);
@@ -905,6 +925,104 @@ export class Cityscape extends Container {
       this.neonPools
         .ellipse(pos.x, pos.y, pool.rx, pool.ry)
         .fill({ color: pool.color, alpha: pulse });
+    }
+
+    // Mystery data crystals
+    this.mysteryData.clear();
+    for (const md of MYSTERY_DATA) {
+      const pos = isoProject(md.gridX, md.gridY, this.centerX, this.centerY);
+      const spin = Math.sin(this.elapsed * md.freq);
+      const halfW = md.size * 0.5 * Math.abs(spin); // simulate Y-axis rotation
+      const bob = Math.sin(this.elapsed * 1.5 + md.gridX * 2 + md.gridY) * 3;
+      const cx = pos.x;
+      const cy = pos.y - md.size - 2 + bob;
+
+      // Ground shadow
+      this.mysteryData
+        .ellipse(pos.x, pos.y, 4 + halfW * 0.5, 2)
+        .fill({ color: 0x000000, alpha: 0.10 });
+
+      // Pulsing glow behind crystal
+      const glowPulse = 0.08 + Math.sin(this.elapsed * md.freq * 2) * 0.04;
+      this.mysteryData
+        .circle(cx, cy, md.size * 1.2)
+        .fill({ color: md.color, alpha: glowPulse });
+
+      // Top half — brighter
+      this.mysteryData
+        .poly([cx, cy - md.size, cx + halfW, cy, cx, cy + 1, cx - halfW, cy])
+        .fill({ color: md.color, alpha: 0.55 });
+
+      // Bottom half — darker
+      this.mysteryData
+        .poly([cx, cy, cx + halfW, cy, cx, cy + md.size, cx - halfW, cy])
+        .fill({ color: shade(md.color, 0.5), alpha: 0.45 });
+
+      // Edge highlights
+      if (halfW > 1) {
+        this.mysteryData
+          .moveTo(cx, cy - md.size).lineTo(cx + halfW, cy)
+          .stroke({ color: 0xffffff, alpha: 0.15, width: 0.5 })
+          .moveTo(cx, cy - md.size).lineTo(cx - halfW, cy)
+          .stroke({ color: 0xffffff, alpha: 0.10, width: 0.5 })
+          .moveTo(cx + halfW, cy).lineTo(cx, cy + md.size)
+          .stroke({ color: 0xffffff, alpha: 0.08, width: 0.5 })
+          .moveTo(cx - halfW, cy).lineTo(cx, cy + md.size)
+          .stroke({ color: 0xffffff, alpha: 0.06, width: 0.5 });
+      }
+    }
+
+    // Arcade digital banner
+    this.arcadeBanner.clear();
+    {
+      const aPos = isoProject(1.5, -0.8, this.centerX, this.centerY);
+      const ax = aPos.x;
+      const ay = aPos.y;
+      const ahw = 16;
+      const ahd = 11;
+      const ah = 44;
+      // Top face diamond corners
+      const topN = { x: ax, y: ay - ah - ahd };        // north
+      const topE = { x: ax + ahw, y: ay - ah };         // east
+      const topS = { x: ax, y: ay - ah + ahd };         // south
+      const topW = { x: ax - ahw, y: ay - ah };         // west
+
+      // Scroll colored segments across the top face
+      const segCount = 6;
+      const scrollSpeed = 0.4;
+      const bannerColors = [0xff0000, 0xffff00, 0x00ff64, 0x00fff5, 0xff00ff, 0xff8800];
+      for (let s = 0; s < segCount; s++) {
+        const t0 = ((s / segCount) + this.elapsed * scrollSpeed) % 1;
+        const t1 = (((s + 1) / segCount) + this.elapsed * scrollSpeed) % 1;
+        if (t1 < t0) continue; // skip wrap-around segment
+
+        // Interpolate along the top diamond: go N→E→S→W→N parametrically
+        // Use simple left-right interpolation: t=0 is west edge, t=1 is east edge
+        const lerp = (a: {x:number;y:number}, b: {x:number;y:number}, f: number) => ({
+          x: a.x + (b.x - a.x) * f,
+          y: a.y + (b.y - a.y) * f,
+        });
+
+        // Top edge: W → N → E (t 0→0.5→1)
+        const topAt = (t: number) => {
+          if (t < 0.5) return lerp(topW, topN, t * 2);
+          return lerp(topN, topE, (t - 0.5) * 2);
+        };
+        // Bottom edge: W → S → E (t 0→0.5→1)
+        const botAt = (t: number) => {
+          if (t < 0.5) return lerp(topW, topS, t * 2);
+          return lerp(topS, topE, (t - 0.5) * 2);
+        };
+
+        const p0t = topAt(t0);
+        const p1t = topAt(t1);
+        const p0b = botAt(t0);
+        const p1b = botAt(t1);
+
+        this.arcadeBanner
+          .poly([p0t.x, p0t.y, p1t.x, p1t.y, p1b.x, p1b.y, p0b.x, p0b.y])
+          .fill({ color: bannerColors[s % bannerColors.length], alpha: 0.18 });
+      }
     }
 
     // NetNavi — idle + walk
