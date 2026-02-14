@@ -45,15 +45,38 @@ export class Connection extends Container {
         this.line.clear();
         const alpha = Math.max(0.12, this.pulseAlpha);
         const color = 0x00fff5;
-        // Dashed line
         const dx = this.endX - this.startX;
         const dy = this.endY - this.startY;
         const len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0)
+            return;
+        const ux = dx / len;
+        const uy = dy / len;
+        // Perpendicular for double-line offset
+        const px = -uy;
+        const py = ux;
+        const offset = 1.5; // half of 3px gap
+        // Double parallel lines (circuit traces)
+        this.line
+            .moveTo(this.startX + px * offset, this.startY + py * offset)
+            .lineTo(this.endX + px * offset, this.endY + py * offset)
+            .stroke({ color, alpha: 0.15, width: 1 });
+        this.line
+            .moveTo(this.startX - px * offset, this.startY - py * offset)
+            .lineTo(this.endX - px * offset, this.endY - py * offset)
+            .stroke({ color, alpha: 0.15, width: 1 });
+        // Faint fill between the two lines
+        this.line
+            .moveTo(this.startX + px * offset, this.startY + py * offset)
+            .lineTo(this.endX + px * offset, this.endY + py * offset)
+            .lineTo(this.endX - px * offset, this.endY - py * offset)
+            .lineTo(this.startX - px * offset, this.startY - py * offset)
+            .closePath()
+            .fill({ color, alpha: 0.05 });
+        // Center dashed line (signal)
         const dashLen = 8;
         const gapLen = 6;
         const steps = Math.floor(len / (dashLen + gapLen));
-        const ux = dx / len;
-        const uy = dy / len;
         for (let i = 0; i < steps; i++) {
             const sx = this.startX + ux * i * (dashLen + gapLen);
             const sy = this.startY + uy * i * (dashLen + gapLen);
@@ -61,7 +84,25 @@ export class Connection extends Container {
             const ey = sy + uy * dashLen;
             this.line.moveTo(sx, sy).lineTo(ex, ey).stroke({ color, alpha, width: 1.5 });
         }
-        // Label at midpoint
-        this.labelText.position.set((this.startX + this.endX) / 2, (this.startY + this.endY) / 2 - 10);
+        // Solder pad circles at endpoints
+        this.line
+            .circle(this.startX, this.startY, 4)
+            .fill({ color, alpha: 0.2 })
+            .stroke({ color, alpha: 0.3, width: 1 });
+        this.line
+            .circle(this.endX, this.endY, 4)
+            .fill({ color, alpha: 0.2 })
+            .stroke({ color, alpha: 0.3, width: 1 });
+        // Via marker at midpoint (concentric circles)
+        const midX = (this.startX + this.endX) / 2;
+        const midY = (this.startY + this.endY) / 2;
+        this.line
+            .circle(midX, midY, 5)
+            .stroke({ color, alpha: 0.2, width: 1 });
+        this.line
+            .circle(midX, midY, 2.5)
+            .fill({ color, alpha: 0.15 });
+        // Label shifted above midpoint (above via)
+        this.labelText.position.set(midX, midY - 14);
     }
 }

@@ -1,15 +1,27 @@
-import { Graphics, Container } from 'pixi.js';
+import { Graphics, Text, Container } from 'pixi.js';
 import { isoProject } from '../data/topology';
 const GRID_EXTENT = 6;
 const LINE_COLOR = 0x00fff5;
 const LINE_ALPHA = 0.06;
 export class IsometricGrid extends Container {
     gfx = new Graphics();
+    silkscreen;
     centerX = 0;
     centerY = 0;
     constructor() {
         super();
         this.addChild(this.gfx);
+        this.silkscreen = new Text({
+            text: 'PCB-CNNCT-01',
+            style: {
+                fontFamily: 'Share Tech Mono, monospace',
+                fontSize: 7,
+                fill: 0x00fff5,
+                letterSpacing: 1,
+            },
+        });
+        this.silkscreen.alpha = 0.06;
+        this.addChild(this.silkscreen);
     }
     draw(centerX, centerY) {
         this.centerX = centerX;
@@ -39,5 +51,20 @@ export class IsometricGrid extends Container {
             .lineTo(corners[3].x, corners[3].y)
             .closePath()
             .stroke({ color: LINE_COLOR, alpha: LINE_ALPHA * 2, width: 1 });
+        // PCB test points at deterministic grid intersections
+        for (let i = 0; i <= GRID_EXTENT; i++) {
+            for (let j = 0; j <= GRID_EXTENT; j++) {
+                // Only draw at a subset of intersections for subtlety
+                if ((i + j) % 3 !== 0)
+                    continue;
+                const pt = isoProject(i, j, centerX, centerY);
+                this.gfx
+                    .circle(pt.x, pt.y, 2)
+                    .fill({ color: LINE_COLOR, alpha: 0.08 });
+            }
+        }
+        // Silkscreen reference text in lower-right area
+        const silkPos = isoProject(GRID_EXTENT - 1, GRID_EXTENT, centerX, centerY);
+        this.silkscreen.position.set(silkPos.x - 30, silkPos.y + 8);
     }
 }
