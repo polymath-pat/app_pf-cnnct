@@ -121,17 +121,20 @@ const TREE_POSITIONS = [
 ];
 
 const ROAD_SEGMENTS: [number, number, number, number][] = [
-  // Streets (horizontal-ish)
-  [0, 0, 5, 0],
-  [0, 1, 4, 1],
-  [0, 4, 5, 4],
-  // Avenues (vertical-ish)
-  [1, 0, 1, 5],
-  [3, 0, 3, 5],
-  [5, 0, 5, 5],
-  // Diagonals
-  [0, 1, 2, 3],
-  [3, 1, 5, 3],
+  // Streets (iso-horizontal, constant gridY)
+  [-0.5, 0, 5.5, 0],   // top edge
+  [-0.5, 1, 5, 1],      // upper (OpenSearch row)
+  [-0.5, 2, 5, 2],      // main (Frontend-Backend-Valkey row)
+  [-0.5, 3, 5, 3],      // lower (PostgreSQL row)
+  [-0.5, 4, 5, 4],      // bottom edge
+  // Avenues (iso-vertical, constant gridX)
+  [0, -0.5, 0, 4.5],    // left edge (by Frontend)
+  [2, -0.5, 2, 4.5],    // center (Backend-Postgres column)
+  [4, -0.5, 4, 4.5],    // right (DNS-Valkey column)
+  [5, -0.5, 5, 4.5],    // far right edge
+  // Inner alleys
+  [1, 0, 1, 4],          // inner-left alley
+  [3, 0, 3, 4],          // center-right alley
 ];
 
 const NEON_POOL_DEFS: NeonPool[] = [
@@ -160,9 +163,15 @@ function seededRand(seed: number): () => number {
 
 // Grid positions the NetNavi can walk between (road intersections)
 const NAVI_WAYPOINTS = [
-  { gridX: 1, gridY: 1 }, { gridX: 3, gridY: 1 }, { gridX: 1, gridY: 3 },
-  { gridX: 3, gridY: 3 }, { gridX: 2, gridY: 0 }, { gridX: 5, gridY: 2 },
-  { gridX: 0, gridY: 4 }, { gridX: 4, gridY: 4 },
+  { gridX: 0, gridY: 0 }, { gridX: 1, gridY: 0 }, { gridX: 2, gridY: 0 },
+  { gridX: 3, gridY: 0 }, { gridX: 4, gridY: 0 },
+  { gridX: 0, gridY: 1 }, { gridX: 1, gridY: 1 }, { gridX: 2, gridY: 1 },
+  { gridX: 3, gridY: 1 }, { gridX: 4, gridY: 1 },
+  { gridX: 0, gridY: 2 }, { gridX: 1, gridY: 2 }, { gridX: 2, gridY: 2 },
+  { gridX: 3, gridY: 2 }, { gridX: 4, gridY: 2 }, { gridX: 5, gridY: 2 },
+  { gridX: 0, gridY: 3 }, { gridX: 1, gridY: 3 }, { gridX: 2, gridY: 3 },
+  { gridX: 3, gridY: 3 }, { gridX: 4, gridY: 3 },
+  { gridX: 0, gridY: 4 }, { gridX: 2, gridY: 4 }, { gridX: 4, gridY: 4 },
 ];
 
 // Peripheral buildings that get billboard panels (by index)
@@ -265,7 +274,7 @@ export class Cityscape extends Container {
 
   private drawRoads(): void {
     this.roads.clear();
-    const roadWidth = 4;
+    const roadWidth = 8;
 
     for (const [x1, y1, x2, y2] of ROAD_SEGMENTS) {
       const from = isoProject(x1, y1, this.centerX, this.centerY);
@@ -279,7 +288,7 @@ export class Cityscape extends Container {
       const nx = -dy / len * (roadWidth / 2);
       const ny = dx / len * (roadWidth / 2);
 
-      // Road fill quad
+      // Road fill quad (darker asphalt)
       this.roads
         .poly([
           from.x + nx, from.y + ny,
@@ -287,7 +296,17 @@ export class Cityscape extends Container {
           to.x - nx,   to.y - ny,
           from.x - nx, from.y - ny,
         ])
-        .fill({ color: 0x1a2030, alpha: 0.15 });
+        .fill({ color: 0x1a2030, alpha: 0.25 });
+
+      // Neon edge lines (lane markers on each side)
+      this.roads
+        .moveTo(from.x + nx, from.y + ny)
+        .lineTo(to.x + nx, to.y + ny)
+        .stroke({ color: 0x00fff5, alpha: 0.08, width: 0.5 });
+      this.roads
+        .moveTo(from.x - nx, from.y - ny)
+        .lineTo(to.x - nx, to.y - ny)
+        .stroke({ color: 0x00fff5, alpha: 0.08, width: 0.5 });
 
       // Center lane dashes
       const dashLen = 8;
@@ -304,8 +323,31 @@ export class Cityscape extends Container {
         this.roads
           .moveTo(sx, sy)
           .lineTo(ex, ey)
-          .stroke({ color: 0x3a4050, alpha: 0.12, width: 1 });
+          .stroke({ color: 0x4a5565, alpha: 0.2, width: 1 });
       }
+    }
+
+    // Intersection junction dots at integer grid crossings
+    const intersections = new Set<string>();
+    for (const [x1, y1, x2, y2] of ROAD_SEGMENTS) {
+      const minX = Math.ceil(Math.min(x1, x2));
+      const maxX = Math.floor(Math.max(x1, x2));
+      const minY = Math.ceil(Math.min(y1, y2));
+      const maxY = Math.floor(Math.max(y1, y2));
+      if (x1 === x2) {
+        // Vertical road — mark integer y positions
+        for (let gy = minY; gy <= maxY; gy++) intersections.add(`${x1},${gy}`);
+      } else if (y1 === y2) {
+        // Horizontal road — mark integer x positions
+        for (let gx = minX; gx <= maxX; gx++) intersections.add(`${gx},${y1}`);
+      }
+    }
+    for (const key of intersections) {
+      const [gx, gy] = key.split(',').map(Number);
+      const pos = isoProject(gx, gy, this.centerX, this.centerY);
+      this.roads
+        .circle(pos.x, pos.y, 5)
+        .fill({ color: 0x1a2030, alpha: 0.3 });
     }
   }
 

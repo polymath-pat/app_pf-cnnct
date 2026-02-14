@@ -329,6 +329,11 @@ export class InfraNode extends Container {
     const sw = hw * 0.7;
     const sh = h * 0.55;
 
+    // Screen backlight bleed glow
+    this.serviceDetails
+      .rect(sx - 3, sy - 3, sw + 6, sh + 6)
+      .fill({ color, alpha: 0.06 });
+
     // Bezel
     this.serviceDetails
       .rect(sx - 1, sy - 1, sw + 2, sh + 2)
@@ -340,28 +345,36 @@ export class InfraNode extends Container {
     // Glow border
     this.serviceDetails
       .rect(sx, sy, sw, sh)
-      .stroke({ color, alpha: 0.6, width: 1 });
+      .stroke({ color, alpha: 0.8, width: 1.5 });
 
-    // Code lines
+    // Code lines — alternating cyan/green
     const lineLengths = [0.85, 0.6, 0.75, 0.45, 0.9, 0.5, 0.7, 0.55];
+    const lineColors = [color, 0x00ff64, color, 0x00fff5, color, 0x00ff64, color, 0x00fff5];
     for (let i = 0; i < lineLengths.length; i++) {
       const ly = sy + 4 + i * (sh / 9);
       if (ly > sy + sh - 3) break;
       this.serviceDetails
         .moveTo(sx + 3, ly)
         .lineTo(sx + 3 + (sw - 6) * lineLengths[i], ly)
-        .stroke({ color, alpha: 0.18, width: 1 });
+        .stroke({ color: lineColors[i], alpha: 0.35, width: 1 });
     }
+
+    // Blinking cursor dot at end of line 2
+    const cursorLineY = sy + 4 + 1 * (sh / 9);
+    const cursorLineX = sx + 3 + (sw - 6) * lineLengths[1];
+    this.serviceDetails
+      .rect(cursorLineX + 1, cursorLineY - 1, 2, 2)
+      .fill({ color, alpha: 0.5 });
 
     // Left face — browser tab indicator
     const tabX = x - hw * 0.8;
     const tabY = y - h * 0.85;
     this.serviceDetails
       .rect(tabX, tabY, hw * 0.5, 3)
-      .fill({ color, alpha: 0.25 });
+      .fill({ color, alpha: 0.4 });
     this.serviceDetails
       .rect(tabX, tabY, hw * 0.15, 3)
-      .fill({ color, alpha: 0.45 });
+      .fill({ color, alpha: 0.65 });
 
     // Rooftop — WiFi arcs + antenna dot
     const topY = y - h - BUILDING_DEPTH / 2;
@@ -374,7 +387,7 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(x + Math.cos(startAngle) * r, topY - 2 + Math.sin(startAngle) * r)
         .arc(x, topY - 2, r, startAngle, -Math.PI * 0.2)
-        .stroke({ color, alpha: 0.3 - i * 0.06, width: 1 });
+        .stroke({ color, alpha: 0.45 - i * 0.08, width: 1.5 });
     }
   }
 
@@ -395,22 +408,22 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(rackLeft, ry)
         .lineTo(rackRight, ry)
-        .stroke({ color, alpha: 0.2, width: 0.5 });
+        .stroke({ color, alpha: 0.35, width: 0.5 });
       if (i < 7) {
-        const bayAlpha = i % 2 === 0 ? 0.08 : 0.04;
+        const bayAlpha = i % 2 === 0 ? 0.14 : 0.08;
         this.serviceDetails
           .rect(rackLeft, ry, rackRight - rackLeft, h * 0.09)
           .fill({ color, alpha: bayAlpha });
       }
     }
 
-    // LED column (static base — animated overlay in animBackend)
+    // LED column — left side (static base — animated overlay in animBackend)
     const ledColors = [0x00ff64, 0xffd93d, 0xff4444, 0x00ff64, 0x00fff5];
     for (let i = 0; i < ledColors.length; i++) {
       const ly = rackTop + 4 + i * (h * 0.14);
       this.serviceDetails
         .circle(rackRight + 4, ly, 1.5)
-        .fill({ color: ledColors[i], alpha: 0.15 });
+        .fill({ color: ledColors[i], alpha: 0.25 });
     }
 
     // Right face — circuit traces
@@ -422,15 +435,39 @@ export class InfraNode extends Container {
         .moveTo(traceX, ty)
         .lineTo(traceX + tw, ty)
         .lineTo(traceX + tw, ty + 4)
-        .stroke({ color, alpha: 0.12, width: 0.5 });
+        .stroke({ color, alpha: 0.25, width: 1 });
+    }
+
+    // Second LED column — right face
+    const rightLedX = x + hw * 0.7;
+    const rightLedColors = [0x00fff5, 0x00ff64, 0xffd93d, 0x00ff64];
+    for (let i = 0; i < rightLedColors.length; i++) {
+      const ly = y - h * 0.7 + i * (h * 0.14);
+      this.serviceDetails
+        .circle(rightLedX, ly, 1.2)
+        .fill({ color: rightLedColors[i], alpha: 0.2 });
+    }
+
+    // Power connector block — left face bottom
+    const pcX = rackLeft + 2;
+    const pcY = y - h * 0.12;
+    this.serviceDetails
+      .rect(pcX, pcY, 8, 4)
+      .fill({ color: shade(color, 0.25), alpha: 0.35 })
+      .stroke({ color, alpha: 0.25, width: 0.5 });
+    // Connector pins
+    for (let p = 0; p < 3; p++) {
+      this.serviceDetails
+        .rect(pcX + 1.5 + p * 2.2, pcY + 1, 1, 2)
+        .fill({ color: 0xffd93d, alpha: 0.3 });
     }
 
     // Rooftop — vent box with slits
     const topY = y - h - BUILDING_DEPTH / 2;
     this.serviceDetails
       .rect(x - 7, topY - 5, 14, 5)
-      .fill({ color: shade(color, 0.35), alpha: 0.4 })
-      .stroke({ color, alpha: 0.2, width: 0.5 });
+      .fill({ color: shade(color, 0.35), alpha: 0.55 })
+      .stroke({ color, alpha: 0.3, width: 0.5 });
     for (let i = 0; i < 4; i++) {
       this.serviceDetails
         .moveTo(x - 5, topY - 4 + i * 1.3)
@@ -461,17 +498,23 @@ export class InfraNode extends Container {
 
         this.serviceDetails
           .rect(cx, cy, chipW, chipH)
-          .fill({ color: shade(color, 0.6), alpha: 0.4 })
-          .stroke({ color, alpha: 0.25, width: 0.5 });
+          .fill({ color: shade(color, 0.6), alpha: 0.55 })
+          .stroke({ color, alpha: 0.4, width: 0.5 });
 
+        // Pin lines
         for (let p = 0; p < 3; p++) {
           const px = cx + 1 + p * 1.5;
           this.serviceDetails
             .moveTo(px, cy - 1).lineTo(px, cy)
-            .stroke({ color, alpha: 0.2, width: 0.5 })
+            .stroke({ color, alpha: 0.35, width: 0.5 })
             .moveTo(px, cy + chipH).lineTo(px, cy + chipH + 1)
-            .stroke({ color, alpha: 0.2, width: 0.5 });
+            .stroke({ color, alpha: 0.35, width: 0.5 });
         }
+
+        // Address mark inside chip
+        this.serviceDetails
+          .rect(cx + 1.5, cy + 1, 2, 1.5)
+          .fill({ color, alpha: 0.2 });
       }
     }
 
@@ -484,24 +527,31 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(busX, by)
         .lineTo(busX + bw, by)
-        .stroke({ color, alpha: 0.22, width: 1 });
+        .stroke({ color, alpha: 0.4, width: 1.5 });
       this.serviceDetails
         .rect(busX + bw, by - 1, 2, 2)
-        .fill({ color, alpha: 0.18 });
+        .fill({ color, alpha: 0.3 });
     }
 
     // Rooftop — heat spreader with thermal lines
     const topY = y - h - BUILDING_DEPTH / 2;
     this.serviceDetails
       .rect(x - 8, topY - 4, 16, 4)
-      .fill({ color: shade(color, 0.5), alpha: 0.35 })
-      .stroke({ color, alpha: 0.2, width: 0.5 });
+      .fill({ color: shade(color, 0.5), alpha: 0.5 })
+      .stroke({ color, alpha: 0.35, width: 0.5 });
     for (let i = 0; i < 3; i++) {
       this.serviceDetails
         .moveTo(x - 6 + i * 5, topY - 3.5)
         .lineTo(x - 6 + i * 5, topY - 0.5)
-        .stroke({ color, alpha: 0.15, width: 0.5 });
+        .stroke({ color, alpha: 0.25, width: 0.5 });
     }
+    // Glowing center dot on heat spreader
+    this.serviceDetails
+      .circle(x, topY - 2, 1.5)
+      .fill({ color, alpha: 0.5 });
+    this.serviceDetails
+      .circle(x, topY - 2, 3.5)
+      .fill({ color, alpha: 0.1 });
   }
 
   /** PostgreSQL — stacked cylinders, table grid, DB icon */
@@ -524,21 +574,34 @@ export class InfraNode extends Container {
       // Cylinder body
       this.serviceDetails
         .rect(cylX - cylRX, cy, cylRX * 2, cylH)
-        .fill({ color: shade(color, 0.3), alpha: 0.3 });
+        .fill({ color: shade(color, 0.3), alpha: 0.45 });
       this.serviceDetails
         .moveTo(cylX - cylRX, cy).lineTo(cylX - cylRX, cy + cylH)
-        .stroke({ color, alpha: 0.2, width: 0.5 })
+        .stroke({ color, alpha: 0.35, width: 0.5 })
         .moveTo(cylX + cylRX, cy).lineTo(cylX + cylRX, cy + cylH)
-        .stroke({ color, alpha: 0.2, width: 0.5 });
+        .stroke({ color, alpha: 0.35, width: 0.5 });
       // Top ellipse
       this.serviceDetails
         .ellipse(cylX, cy, cylRX, cylRY)
-        .fill({ color: shade(color, 0.65), alpha: 0.45 })
-        .stroke({ color, alpha: 0.3, width: 0.5 });
+        .fill({ color: shade(color, 0.65), alpha: 0.6 })
+        .stroke({ color, alpha: 0.5, width: 0.5 });
       // Bottom ellipse
       this.serviceDetails
         .ellipse(cylX, cy + cylH, cylRX, cylRY)
-        .fill({ color: shade(color, 0.4), alpha: 0.3 });
+        .fill({ color: shade(color, 0.4), alpha: 0.45 });
+    }
+
+    // Connector lines between cylinder stacks
+    for (let i = 0; i < 2; i++) {
+      const fromY = startY + i * (cylH + 4) + cylH;
+      const toY = startY + (i + 1) * (cylH + 4);
+      this.serviceDetails
+        .moveTo(cylX - cylRX + 2, fromY + cylRY)
+        .lineTo(cylX - cylRX + 2, toY - cylRY)
+        .stroke({ color, alpha: 0.2, width: 0.5 })
+        .moveTo(cylX + cylRX - 2, fromY + cylRY)
+        .lineTo(cylX + cylRX - 2, toY - cylRY)
+        .stroke({ color, alpha: 0.2, width: 0.5 });
     }
 
     // Left face — table grid with bold header row
@@ -554,14 +617,27 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(gridX, ly)
         .lineTo(gridX + gridW, ly)
-        .stroke({ color, alpha: r === 0 ? 0.3 : 0.15, width: r === 0 ? 1 : 0.5 });
+        .stroke({ color, alpha: r === 0 ? 0.5 : 0.28, width: r === 0 ? 1 : 0.5 });
     }
     for (let c = 0; c <= cols; c++) {
       const lx = gridX + (c / cols) * gridW;
       this.serviceDetails
         .moveTo(lx, gridY)
         .lineTo(lx, gridY + gridH)
-        .stroke({ color, alpha: 0.15, width: 0.5 });
+        .stroke({ color, alpha: 0.25, width: 0.5 });
+    }
+
+    // Data dots in table cells
+    const cellW = gridW / cols;
+    const cellH = gridH / rows;
+    for (let r = 1; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const dotX = gridX + c * cellW + cellW * 0.5;
+        const dotY = gridY + r * cellH + cellH * 0.5;
+        this.serviceDetails
+          .circle(dotX, dotY, 0.8)
+          .fill({ color, alpha: 0.18 });
+      }
     }
 
     // Rooftop — DB cylinder icon
@@ -594,12 +670,19 @@ export class InfraNode extends Container {
     this.serviceDetails
       .rect(termX, termY, termW, termH)
       .fill({ color: 0x050510, alpha: 0.8 })
-      .stroke({ color, alpha: 0.4, width: 0.5 });
+      .stroke({ color, alpha: 0.6, width: 1 });
 
-    // Title bar
+    // Title bar with window dots
     this.serviceDetails
       .rect(termX, termY, termW, 3)
-      .fill({ color, alpha: 0.2 });
+      .fill({ color, alpha: 0.35 });
+    // Window dots (red, yellow, green)
+    const dotColors = [0xff4444, 0xffd93d, 0x00ff64];
+    for (let d = 0; d < 3; d++) {
+      this.serviceDetails
+        .circle(termX + 3 + d * 3, termY + 1.5, 0.8)
+        .fill({ color: dotColors[d], alpha: 0.6 });
+    }
 
     // Colored log lines
     const logColors = [color, 0x00ff64, color, 0xffd93d, color, 0xff4444, color, 0x00fff5];
@@ -610,7 +693,7 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(termX + 3, ly)
         .lineTo(termX + 3 + (termW - 6) * logLengths[i], ly)
-        .stroke({ color: logColors[i], alpha: 0.25, width: 1 });
+        .stroke({ color: logColors[i], alpha: 0.4, width: 1 });
     }
 
     // Left face — magnifying glass with crosshair
@@ -620,15 +703,21 @@ export class InfraNode extends Container {
 
     this.serviceDetails
       .circle(glassX, glassY, glassR)
-      .fill({ color: shade(color, 0.2), alpha: 0.15 })
-      .stroke({ color, alpha: 0.35, width: 1.5 });
+      .fill({ color: shade(color, 0.2), alpha: 0.25 })
+      .stroke({ color, alpha: 0.55, width: 2 });
 
     // Crosshair
     this.serviceDetails
       .moveTo(glassX - 3, glassY).lineTo(glassX + 3, glassY)
-      .stroke({ color, alpha: 0.15, width: 0.5 })
+      .stroke({ color, alpha: 0.2, width: 0.5 })
       .moveTo(glassX, glassY - 3).lineTo(glassX, glassY + 3)
-      .stroke({ color, alpha: 0.15, width: 0.5 });
+      .stroke({ color, alpha: 0.2, width: 0.5 });
+
+    // Lens flare highlight arc
+    this.serviceDetails
+      .moveTo(glassX + Math.cos(-Math.PI * 0.7) * (glassR - 2), glassY + Math.sin(-Math.PI * 0.7) * (glassR - 2))
+      .arc(glassX, glassY, glassR - 2, -Math.PI * 0.7, -Math.PI * 0.3)
+      .stroke({ color: 0xffffff, alpha: 0.15, width: 1 });
 
     // Handle
     const ha = Math.PI * 0.75;
@@ -637,7 +726,7 @@ export class InfraNode extends Container {
     this.serviceDetails
       .moveTo(hx, hy)
       .lineTo(hx + Math.cos(ha) * 7, hy + Math.sin(ha) * 7)
-      .stroke({ color, alpha: 0.3, width: 2 });
+      .stroke({ color, alpha: 0.5, width: 2 });
 
     // Rooftop — 3-element antenna array
     const topY = y - h - BUILDING_DEPTH / 2;
@@ -646,10 +735,10 @@ export class InfraNode extends Container {
       const aH = 4 + (1 - Math.abs(i)) * 2;
       this.serviceDetails
         .moveTo(ax, topY).lineTo(ax, topY - aH)
-        .stroke({ color, alpha: 0.3, width: 1 });
+        .stroke({ color, alpha: 0.4, width: 1 });
       this.serviceDetails
         .circle(ax, topY - aH, 1)
-        .fill({ color, alpha: 0.4 });
+        .fill({ color, alpha: 0.6 });
     }
   }
 
@@ -666,7 +755,7 @@ export class InfraNode extends Container {
     const antTip = topY - 18;
     this.serviceDetails
       .moveTo(x, topY).lineTo(x, antTip)
-      .stroke({ color, alpha: 0.45, width: 1.5 });
+      .stroke({ color, alpha: 0.6, width: 2 });
 
     // Cross-bars on mast
     for (let i = 1; i <= 3; i++) {
@@ -674,13 +763,13 @@ export class InfraNode extends Container {
       const cw = 3 + (3 - i) * 1.5;
       this.serviceDetails
         .moveTo(x - cw, cy).lineTo(x + cw, cy)
-        .stroke({ color, alpha: 0.25, width: 1 });
+        .stroke({ color, alpha: 0.4, width: 1 });
     }
 
     // Antenna tip beacon
     this.serviceDetails
       .circle(x, antTip, 2)
-      .fill({ color, alpha: 0.55 });
+      .fill({ color, alpha: 0.75 });
 
     // Static signal arcs
     for (let i = 1; i <= 3; i++) {
@@ -689,7 +778,7 @@ export class InfraNode extends Container {
       this.serviceDetails
         .moveTo(x + Math.cos(startAngle) * r, antTip + Math.sin(startAngle) * r)
         .arc(x, antTip, r, startAngle, -Math.PI * 0.25)
-        .stroke({ color, alpha: 0.22 - i * 0.05, width: 1 });
+        .stroke({ color, alpha: 0.35 - i * 0.07, width: 1 });
     }
 
     // Satellite dish
@@ -699,13 +788,19 @@ export class InfraNode extends Container {
     this.serviceDetails
       .moveTo(dishX + Math.cos(dishStart) * 6, dishY + Math.sin(dishStart) * 6)
       .arc(dishX, dishY, 6, dishStart, -Math.PI * 0.1)
-      .stroke({ color, alpha: 0.35, width: 1.5 });
+      .stroke({ color, alpha: 0.55, width: 2 });
+    // Dish arm
     this.serviceDetails
       .moveTo(dishX, dishY).lineTo(dishX - 3, dishY - 5)
-      .stroke({ color, alpha: 0.3, width: 1 });
+      .stroke({ color, alpha: 0.5, width: 1 });
+    // Dish receiver dot
     this.serviceDetails
       .circle(dishX - 3, dishY - 5, 1)
-      .fill({ color, alpha: 0.3 });
+      .fill({ color, alpha: 0.5 });
+    // Dish receiver glow halo
+    this.serviceDetails
+      .circle(dishX - 3, dishY - 5, 3)
+      .fill({ color, alpha: 0.1 });
 
     // Right face — DNS query/response arrows
     const arrowX = x + hw * 0.2;
@@ -714,28 +809,29 @@ export class InfraNode extends Container {
       // Query arrow (right)
       this.serviceDetails
         .moveTo(arrowX, ay).lineTo(arrowX + 12, ay)
-        .stroke({ color, alpha: 0.2, width: 1 });
+        .stroke({ color, alpha: 0.35, width: 1 });
       this.serviceDetails
         .poly([arrowX + 12, ay - 2, arrowX + 15, ay, arrowX + 12, ay + 2])
-        .fill({ color, alpha: 0.2 });
+        .fill({ color, alpha: 0.35 });
       // Response arrow (left, green)
       this.serviceDetails
         .moveTo(arrowX + 15, ay + 4).lineTo(arrowX + 3, ay + 4)
-        .stroke({ color: 0x00ff64, alpha: 0.15, width: 1 });
+        .stroke({ color: 0x00ff64, alpha: 0.28, width: 1 });
       this.serviceDetails
         .poly([arrowX + 3, ay + 2, arrowX, ay + 4, arrowX + 3, ay + 6])
-        .fill({ color: 0x00ff64, alpha: 0.15 });
+        .fill({ color: 0x00ff64, alpha: 0.28 });
     }
 
-    // Left face — zone file lines
+    // Left face — zone file lines with bold header
     const zoneX = x - hw * 0.8;
     const zoneW = hw * 0.5;
     for (let i = 0; i < 5; i++) {
       const zy = y - h * 0.65 + i * 6;
       const zw = zoneW * (0.5 + ((i * 3) % 5) / 10);
+      const isHeader = i === 0;
       this.serviceDetails
-        .moveTo(zoneX, zy).lineTo(zoneX + zw, zy)
-        .stroke({ color, alpha: 0.15, width: 1 });
+        .moveTo(zoneX, zy).lineTo(zoneX + (isHeader ? zoneW * 0.9 : zw), zy)
+        .stroke({ color, alpha: isHeader ? 0.5 : 0.3, width: isHeader ? 1.5 : 1 });
     }
   }
 
