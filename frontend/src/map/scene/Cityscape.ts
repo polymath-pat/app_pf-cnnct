@@ -247,6 +247,11 @@ export class Cityscape extends Container {
   // Power pill ghost effect
   private powerPillTimer = 0; // seconds remaining, 0 = off
 
+  // UFO attack effect
+  private ufoAttack = new Graphics();
+  private ufoTimer = 0; // seconds remaining, 0 = off
+  private ufoPhase = 0; // animation progress
+
   constructor() {
     super();
     this.addChild(this.roads);
@@ -256,6 +261,7 @@ export class Cityscape extends Container {
     this.addChild(this.arcadeGhosts);
     this.addChild(this.spaceNeedle);
     this.addChild(this.spaceNeedleBeacon);
+    this.addChild(this.ufoAttack);
     this.addChild(this.trees);
     this.addChild(this.neonPools);
     this.addChild(this.mysteryData);
@@ -1080,6 +1086,11 @@ export class Cityscape extends Container {
     this.powerPillTimer = 8; // 8 seconds of frightened ghosts
   }
 
+  triggerUfoAttack(): void {
+    this.ufoTimer = 8;
+    this.ufoPhase = 0;
+  }
+
   update(dt: number): void {
     this.elapsed += dt * 0.02;
 
@@ -1090,6 +1101,19 @@ export class Cityscape extends Container {
       if (this.powerPillTimer <= 0) {
         this.powerPillTimer = 0;
         this.drawArcadeGhosts(false);
+      }
+    }
+
+    // UFO attack effect
+    this.ufoAttack.clear();
+    if (this.ufoTimer > 0) {
+      this.ufoTimer -= dt * (1 / 60);
+      this.ufoPhase += dt * (1 / 60);
+      if (this.ufoTimer <= 0) {
+        this.ufoTimer = 0;
+        this.ufoPhase = 0;
+      } else {
+        this.drawUfoAttack();
       }
     }
 
@@ -1449,6 +1473,132 @@ export class Cityscape extends Container {
       this.navi
         .poly([x, this.naviScreenY - 4, x + 8, this.naviScreenY, x, this.naviScreenY + 4, x - 8, this.naviScreenY])
         .fill({ color: 0x00fff5, alpha: glowPulse });
+    }
+  }
+
+  private drawUfoAttack(): void {
+    const g = this.ufoAttack;
+    const snPos = isoProject(0, -0.8, this.centerX, this.centerY);
+    const snX = snPos.x;
+    const snY = snPos.y;
+    const totalH = 120;
+    const spireTopY = snY - totalH;
+    const deckY = snY - totalH * 0.62;
+
+    const duration = 8;
+    const t = this.ufoPhase / duration; // 0 to 1
+
+    // UFO hover position (above spire)
+    const hoverX = snX;
+    const hoverY = spireTopY - 30;
+
+    // UFO position based on phase
+    let ufoX: number, ufoY: number;
+    let laserAlpha = 0;
+
+    if (t < 0.25) {
+      // Approach from upper-right
+      const approach = t / 0.25;
+      const ease = approach < 0.5 ? 2 * approach * approach : 1 - Math.pow(-2 * approach + 2, 2) / 2;
+      const startX = snX + Math.min(250, this.screenWidth * 0.35);
+      const startY = spireTopY - Math.min(150, this.screenHeight * 0.25);
+      ufoX = startX + (hoverX - startX) * ease;
+      ufoY = startY + (hoverY - startY) * ease;
+    } else if (t < 0.75) {
+      // Hovering and attacking
+      const hover = (t - 0.25) / 0.5;
+      ufoX = hoverX + Math.sin(this.ufoPhase * 2) * 3;
+      ufoY = hoverY + Math.sin(this.ufoPhase * 1.5) * 2;
+      // Lasers ramp up then hold
+      laserAlpha = Math.min(1, hover * 3);
+    } else {
+      // Retreat to upper-left
+      const retreat = (t - 0.75) / 0.25;
+      const ease = retreat < 0.5 ? 2 * retreat * retreat : 1 - Math.pow(-2 * retreat + 2, 2) / 2;
+      const endX = snX - Math.min(280, this.screenWidth * 0.4);
+      const endY = spireTopY - Math.min(180, this.screenHeight * 0.3);
+      ufoX = hoverX + (endX - hoverX) * ease;
+      ufoY = hoverY + (endY - hoverY) * ease;
+      laserAlpha = Math.max(0, 1 - retreat * 4);
+    }
+
+    // Overall fade for approach/retreat
+    const fadeAlpha = t < 0.1 ? t / 0.1 : t > 0.9 ? (1 - t) / 0.1 : 1;
+
+    // === Draw UFO saucer ===
+    const saucerW = 20;
+    const saucerH = 6;
+
+    // Underside glow
+    g.ellipse(ufoX, ufoY + saucerH * 0.3, saucerW * 0.7, saucerH * 1.5)
+      .fill({ color: 0x44ffaa, alpha: 0.06 * fadeAlpha });
+
+    // Main body — dark metallic ellipse
+    g.ellipse(ufoX, ufoY, saucerW, saucerH)
+      .fill({ color: 0x334455, alpha: 0.7 * fadeAlpha });
+    g.ellipse(ufoX, ufoY, saucerW, saucerH)
+      .stroke({ color: 0x556677, alpha: 0.4 * fadeAlpha, width: 1 });
+
+    // Dome on top
+    g.ellipse(ufoX, ufoY - saucerH * 0.6, saucerW * 0.4, saucerH * 0.7)
+      .fill({ color: 0x667788, alpha: 0.6 * fadeAlpha });
+    g.ellipse(ufoX, ufoY - saucerH * 0.6, saucerW * 0.4, saucerH * 0.7)
+      .stroke({ color: 0x88aacc, alpha: 0.3 * fadeAlpha, width: 0.5 });
+
+    // Cycling colored lights underneath
+    const lightCount = 7;
+    for (let i = 0; i < lightCount; i++) {
+      const angle = (i / lightCount) * Math.PI * 2 + this.ufoPhase * 3;
+      const lx = ufoX + Math.cos(angle) * saucerW * 0.7;
+      const ly = ufoY + Math.sin(angle) * saucerH * 0.5 + saucerH * 0.3;
+      const lightColors = [0xff0000, 0x00ff00, 0x0088ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800];
+      const ci = (i + Math.floor(this.ufoPhase * 5)) % lightColors.length;
+      g.circle(lx, ly, 1.2)
+        .fill({ color: lightColors[ci], alpha: 0.5 * fadeAlpha });
+    }
+
+    // === Laser beams (only during attack phase) ===
+    if (laserAlpha > 0) {
+      const beamTargets = [
+        { x: snX - 8, y: deckY },
+        { x: snX, y: deckY - 3 },
+        { x: snX + 8, y: deckY },
+      ];
+
+      for (let i = 0; i < beamTargets.length; i++) {
+        const target = beamTargets[i];
+        const wobble = Math.sin(this.ufoPhase * 6 + i * 2.1) * 2;
+        const tx = target.x + wobble;
+        const ty = target.y;
+
+        // Wide glow beam
+        g.moveTo(ufoX, ufoY + saucerH)
+          .lineTo(tx, ty)
+          .stroke({ color: 0xff00ff, alpha: 0.12 * laserAlpha * fadeAlpha, width: 6 });
+
+        // Bright core beam
+        g.moveTo(ufoX, ufoY + saucerH)
+          .lineTo(tx, ty)
+          .stroke({ color: 0xff2244, alpha: 0.5 * laserAlpha * fadeAlpha, width: 2 });
+
+        // Impact glow on deck
+        const impactPulse = 0.3 + Math.sin(this.ufoPhase * 8 + i * 1.5) * 0.15;
+        g.circle(tx, ty, 5)
+          .fill({ color: 0xff4400, alpha: impactPulse * laserAlpha * fadeAlpha });
+        g.circle(tx, ty, 10)
+          .fill({ color: 0xff2200, alpha: impactPulse * 0.3 * laserAlpha * fadeAlpha });
+
+        // Sparks at impact
+        const sparkCount = 3;
+        for (let s = 0; s < sparkCount; s++) {
+          const sparkAngle = this.ufoPhase * 10 + i * 3 + s * 2.1;
+          const sparkDist = 4 + Math.sin(sparkAngle * 1.7) * 3;
+          const sx = tx + Math.cos(sparkAngle) * sparkDist;
+          const sy = ty + Math.sin(sparkAngle) * sparkDist * 0.5 - Math.abs(Math.sin(sparkAngle * 2)) * 4;
+          g.circle(sx, sy, 0.8)
+            .fill({ color: 0xffaa00, alpha: 0.4 * laserAlpha * fadeAlpha });
+        }
+      }
     }
   }
 
